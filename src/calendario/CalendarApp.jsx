@@ -418,7 +418,7 @@ function MonthView({ currentDate, events, onDayClick, onEventClick }) {
                 title={`${ev.title} — ${formatTime(ev.start_time)}`}
               >
                 <span className="pill-time">{formatTime(ev.start_time)}</span>
-                <span>{ev.title}</span>
+                <span>{ev.requires_coffee && '☕ '}{ev.title}</span>
               </div>
             ))}
             {!isBlocked && nonHolidayEvents.length > maxVisible && (
@@ -528,7 +528,7 @@ function WeekView({ currentDate, events, onSlotClick, onEventClick }) {
                     }}
                     onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
                   >
-                    <div className="ev-title">{ev.title}</div>
+                    <div className="ev-title">{ev.requires_coffee && '☕ '}{ev.title}</div>
                     <div className="ev-time">{formatTime(ev.start_time)} – {formatTime(ev.end_time)}</div>
                   </div>
                 );
