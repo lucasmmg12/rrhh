@@ -371,7 +371,7 @@ export default function HomeApp() {
           fontSize: '0.75rem',
           color: '#94a3b8',
         }}>
-          <p style={{ margin: 0 }}>Sanatorio Argentino — Sistema de RRHH · Desarrollado por <strong>Grow Labs</strong></p>
+          <p style={{ margin: 0 }}>Sanatorio Argentino — Sistema de RRHH · Desarrollado por <strong>Innovación y Transformación Digital</strong></p>
           <p style={{ margin: '0.25rem 0 0 0' }}>© {new Date().getFullYear()}</p>
         </footer>
       </main>
