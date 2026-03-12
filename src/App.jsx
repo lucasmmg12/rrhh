@@ -663,6 +663,11 @@ function App() {
             PROTOTIPO EDITABLE (LOCAL)
           </span>
           <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.5rem' }}>
+            <a href="/" style={{
+              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+              borderRadius: '12px', background: '#f1f5f9', color: '#475569',
+              textDecoration: 'none'
+            }}>🏠 Inicio</a>
             <a href="/calendario.html" style={{
               fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
               borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
