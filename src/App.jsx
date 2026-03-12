@@ -662,6 +662,18 @@ function App() {
           <span style={{ padding: '0.25rem 0.5rem', background: 'rgba(2, 132, 199, 0.1)', color: '#0284c7', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
             PROTOTIPO EDITABLE (LOCAL)
           </span>
+          <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.5rem' }}>
+            <a href="/calendario.html" style={{
+              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+              borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
+              textDecoration: 'none'
+            }}>📅 Calendario</a>
+            <a href="/agenda.html" style={{
+              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+              borderRadius: '12px', background: '#fef3c7', color: '#d97706',
+              textDecoration: 'none'
+            }}>📋 Agenda Pública</a>
+          </nav>
         </div>
 
         <div style={{ display: 'flex', gap: '1rem' }}>
