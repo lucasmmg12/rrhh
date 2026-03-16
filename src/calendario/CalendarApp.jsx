@@ -193,7 +193,28 @@ export default function CalendarApp({ isReadonly = false }) {
 
   const handleUpdateEvent = async (id, eventData) => {
     try {
-      await calendarService.updateEvent(id, eventData);
+      const updated = await calendarService.updateEvent(id, eventData);
+
+      // Handle recurrence changes on edit
+      if (eventData.is_recurring && eventData.recurrence_rule) {
+        // First, delete any existing recurring children for this event
+        // (the parent is identified by its own id or its recurrence_parent_id)
+        const parentId = updated.recurrence_parent_id || updated.id;
+        try {
+          // Remove old children before regenerating
+          const { error: cleanupError } = await supabase
+            .from('calendar_events')
+            .delete()
+            .eq('recurrence_parent_id', parentId);
+          if (cleanupError) console.error('Cleanup old recurrences:', cleanupError);
+        } catch (cleanupErr) {
+          console.error('Non-critical: cleanup old recurrences failed:', cleanupErr);
+        }
+
+        // Generate fresh recurring events from the updated parent
+        await calendarService.generateRecurringEvents(updated);
+      }
+
       setModalState(null);
       await loadEvents();
     } catch (e) {
