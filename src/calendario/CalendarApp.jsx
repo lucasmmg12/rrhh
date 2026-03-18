@@ -287,32 +287,25 @@ export default function CalendarApp({ isReadonly = false }) {
           <img src="/logosanatorio.png" alt="Sanatorio Argentino" />
           <h1>Agenda de Salas</h1>
           <span className="cal-badge">{isAdmin ? 'ADMINISTRACIÓN' : 'AGENDA DIGITAL'}</span>
-          <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.75rem' }}>
-            <a href="/" style={{
-              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-              borderRadius: '12px', background: '#f1f5f9', color: '#475569',
-              textDecoration: 'none', transition: 'all 0.15s'
-            }}>🏠 Inicio</a>
-            {isAdmin && (
+          {isAdmin && (
+            <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.75rem' }}>
+              <a href="/" style={{
+                fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                borderRadius: '12px', background: '#f1f5f9', color: '#475569',
+                textDecoration: 'none', transition: 'all 0.15s'
+              }}>🏠 Inicio</a>
               <a href="/agenda.html" style={{
                 fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
                 borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
                 textDecoration: 'none', transition: 'all 0.15s'
               }}>📅 Agenda Pública</a>
-            )}
-            {!isAdmin && (
-              <a href="/calendario.html" style={{
+              <a href="/organigrama.html" style={{
                 fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-                borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
+                borderRadius: '12px', background: '#f0fdf4', color: '#16a34a',
                 textDecoration: 'none', transition: 'all 0.15s'
-              }}>🔐 Admin</a>
-            )}
-            <a href="/organigrama.html" style={{
-              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-              borderRadius: '12px', background: '#f0fdf4', color: '#16a34a',
-              textDecoration: 'none', transition: 'all 0.15s'
-            }}>🏢 Organigrama</a>
-          </nav>
+              }}>🏢 Organigrama</a>
+            </nav>
+          )}
         </div>
 
         <div className="cal-header-center">
