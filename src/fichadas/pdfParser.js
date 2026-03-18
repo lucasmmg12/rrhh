@@ -43,6 +43,87 @@ const COL = {
 };
 
 /**
+ * Night shift rules per area:
+ * Pattern matching is case-insensitive, uses includes().
+ * noche_inicio/noche_fin in hours (24h format).
+ * recargo_min_horas: minimum worked hours to flag as recargo.
+ */
+const NIGHT_RULES = [
+  { patterns: ['ENFERMERIA', 'NEONATOLOGIA', 'NEO', 'UTI', 'GUARDIA', 'TERAPIA'], noche_inicio: 21, noche_fin: 7, recargo_min_horas: 14 },
+  { patterns: ['RECEPCION', 'HOTELERIA', 'AUXILIAR', 'AUX'], noche_inicio: 23, noche_fin: 7, recargo_min_horas: 14 },
+];
+const DEFAULT_NIGHT_RULE = { noche_inicio: 23, noche_fin: 7, recargo_min_horas: 14 };
+
+/**
+ * Get night rule for a given area string
+ */
+export function getNightRule(area) {
+  if (!area) return DEFAULT_NIGHT_RULE;
+  const upper = area.toUpperCase();
+  for (const rule of NIGHT_RULES) {
+    if (rule.patterns.some(p => upper.includes(p))) return rule;
+  }
+  return DEFAULT_NIGHT_RULE;
+}
+
+/**
+ * Calculate how many minutes of a shift fall within the night window.
+ * Night window wraps midnight: e.g. 21:00 → 07:00 means 21:00-23:59 + 00:00-07:00
+ * 
+ * @param {string} entrada - "HH:MM" 
+ * @param {string} salida - "HH:MM" (may be next day for overnight)
+ * @param {boolean} isOvernight - true if salida is on the next day
+ * @param {number} nocheInicio - hour when night starts (e.g. 21)
+ * @param {number} nocheFin - hour when night ends (e.g. 7)
+ * @returns {number} minutes in night window
+ */
+export function calcNocturnalMinutes(entrada, salida, isOvernight, nocheInicio, nocheFin) {
+  if (!entrada || !salida) return 0;
+
+  const [eh, em] = entrada.split(':').map(Number);
+  const [sh, sm] = salida.split(':').map(Number);
+
+  // Convert everything to "minutes from midnight of day 0"
+  const entradaMin = eh * 60 + em;
+  let salidaMin = sh * 60 + sm;
+  if (isOvernight || salidaMin <= entradaMin) {
+    salidaMin += 24 * 60; // next day
+  }
+
+  // Build night intervals (in minutes from midnight day 0)
+  // Night crosses midnight: e.g. 21:00(day0)-07:00(day1) and 21:00(day1)-07:00(day2)
+  const nightIntervals = [];
+  const niMin = nocheInicio * 60;
+  const nfMin = nocheFin * 60;
+
+  if (nocheInicio > nocheFin) {
+    // Night crosses midnight (e.g. 21-07, 23-07)
+    // Day 0 evening: nocheInicio → midnight
+    nightIntervals.push([niMin, 24 * 60]);
+    // Day 1 morning: midnight → nocheFin
+    nightIntervals.push([24 * 60, 24 * 60 + nfMin]);
+    // Day 1 evening (for very long shifts)
+    nightIntervals.push([24 * 60 + niMin, 48 * 60]);
+  } else {
+    // Night doesn't cross midnight (unusual but handle it)
+    nightIntervals.push([niMin, nfMin]);
+    nightIntervals.push([24 * 60 + niMin, 24 * 60 + nfMin]);
+  }
+
+  // Calculate overlap of shift [entradaMin, salidaMin] with each night interval
+  let totalNocturnal = 0;
+  for (const [nStart, nEnd] of nightIntervals) {
+    const overlapStart = Math.max(entradaMin, nStart);
+    const overlapEnd = Math.min(salidaMin, nEnd);
+    if (overlapEnd > overlapStart) {
+      totalNocturnal += overlapEnd - overlapStart;
+    }
+  }
+
+  return totalNocturnal;
+}
+
+/**
  * Parse a PDF file and extract fichadas data
  * @param {File} file - The PDF file to parse
  * @returns {Promise<{area: string, mes: number, anio: number, colaboradores: Array}>}
@@ -186,9 +267,32 @@ function extractData(lines) {
     result.colaboradores.push(currentColaborador);
   }
 
+  // Get night rule for this area
+  const nightRule = getNightRule(result.area);
+  console.log(`[Parser] Night rule for ${result.area}: ${nightRule.noche_inicio}:00 → ${nightRule.noche_fin}:00, recargo >= ${nightRule.recargo_min_horas}h`);
+
   // Post-process: merge night shifts (entry on day N + exit on day N+1)
   for (const colab of result.colaboradores) {
     colab.registros = mergeNightShifts(colab.registros);
+  }
+
+  // Calculate nocturnal hours and detect recargos for each record
+  for (const colab of result.colaboradores) {
+    for (const reg of colab.registros) {
+      if (reg.fichada_entrada && reg.fichada_salida && reg.horas_trabajadas_min > 0) {
+        const isOvernight = reg.datos_raw?.turno_noche || false;
+        reg.horas_nocturnas_min = calcNocturnalMinutes(
+          reg.fichada_entrada, reg.fichada_salida, isOvernight,
+          nightRule.noche_inicio, nightRule.noche_fin
+        );
+        reg.es_turno_noche = reg.horas_nocturnas_min > 0;
+        reg.es_recargo = reg.horas_trabajadas_min >= nightRule.recargo_min_horas * 60;
+      } else {
+        reg.horas_nocturnas_min = 0;
+        reg.es_turno_noche = false;
+        reg.es_recargo = false;
+      }
+    }
   }
 
   // Calculate totals for each collaborator
@@ -199,7 +303,9 @@ function extractData(lines) {
   console.log(`[Parser] Area: ${result.area}, Periodo: ${result.mes}/${result.anio}`);
   console.log(`[Parser] Colaboradores: ${result.colaboradores.length}`);
   for (const c of result.colaboradores) {
-    console.log(`  - ${c.nombre}: ${c.registros.length} registros, ${formatMinToHHMM(c.totales.horas_trabajadas_min)} trabajadas, ${formatMinToHHMM(c.totales.horas_redondeadas_min)} redondeadas`);
+    const nocheDias = c.totales.dias_noche || 0;
+    const recargos = c.totales.recargos || 0;
+    console.log(`  - ${c.nombre}: ${c.registros.length} reg, ${formatMinToHHMM(c.totales.horas_trabajadas_min)} trab, ${formatMinToHHMM(c.totales.horas_redondeadas_min)} red, ${nocheDias} noches, ${recargos} recargos`);
   }
 
   return result;
@@ -406,12 +512,24 @@ function calculateTotals(colab) {
   let totalTrabajadas = 0;
   let totalRedondeadas = 0;
   let diasTrabajados = 0;
+  let totalNocturnas = 0;
+  let diasNoche = 0;
+  let recargos = 0;
+  let horasRecargo = 0;
 
   for (const reg of colab.registros) {
     if (reg.horas_trabajadas_min > 0) {
       totalTrabajadas += reg.horas_trabajadas_min;
       totalRedondeadas += reg.horas_redondeadas_min;
       diasTrabajados++;
+    }
+    if (reg.horas_nocturnas_min > 0) {
+      totalNocturnas += reg.horas_nocturnas_min;
+      diasNoche++;
+    }
+    if (reg.es_recargo) {
+      recargos++;
+      horasRecargo += reg.horas_trabajadas_min;
     }
   }
 
@@ -421,6 +539,10 @@ function calculateTotals(colab) {
     dias_trabajados: diasTrabajados,
     dias_tarde: 0,
     horas_extra_min: 0,
+    horas_nocturnas_min: totalNocturnas,
+    dias_noche: diasNoche,
+    recargos,
+    horas_recargo_min: horasRecargo,
   };
 }
 

@@ -250,6 +250,10 @@ export default function FichadasApp() {
   const totalHorasRedondeadas = filteredTotales.reduce((a, t) => a + (t.total_horas_redondeadas_min || 0), 0);
   const totalDiasTrabajados = filteredTotales.reduce((a, t) => a + (t.dias_trabajados || 0), 0);
   const totalHorasExtra = filteredTotales.reduce((a, t) => a + (t.total_hora_extra_min || 0), 0);
+  const totalHorasNocturnas = filteredTotales.reduce((a, t) => a + (t.total_horas_nocturnas_min || 0), 0);
+  const totalDiasNoche = filteredTotales.reduce((a, t) => a + (t.dias_noche || 0), 0);
+  const totalRecargos = filteredTotales.reduce((a, t) => a + (t.recargos || 0), 0);
+  const totalHorasRecargo = filteredTotales.reduce((a, t) => a + (t.total_horas_recargo_min || 0), 0);
 
   // Export handlers (must be after filteredTotales is defined)
   const handleExportXLSX = () => {
@@ -432,6 +436,10 @@ export default function FichadasApp() {
             totalHorasRedondeadas={totalHorasRedondeadas}
             totalDiasTrabajados={totalDiasTrabajados}
             totalHorasExtra={totalHorasExtra}
+            totalHorasNocturnas={totalHorasNocturnas}
+            totalDiasNoche={totalDiasNoche}
+            totalRecargos={totalRecargos}
+            totalHorasRecargo={totalHorasRecargo}
             // Filters
             filtroArea={filtroArea} setFiltroArea={setFiltroArea}
             filtroColaborador={filtroColaborador} setFiltroColaborador={setFiltroColaborador}
@@ -573,6 +581,7 @@ function UploadView({ dragOver, setDragOver, onDrop, onFileSelect, fileInputRef,
 // ─── DASHBOARD VIEW ──────────────────────────────────────────────
 function DashboardView({
   totales, totalColaboradores, totalHorasRedondeadas, totalDiasTrabajados, totalHorasExtra,
+  totalHorasNocturnas, totalDiasNoche, totalRecargos, totalHorasRecargo,
   filtroArea, setFiltroArea, filtroColaborador, setFiltroColaborador,
   filtroMes, setFiltroMes, filtroAnio, setFiltroAnio,
   filtroPeriodo, setFiltroPeriodo, filtroCriterio, setFiltroCriterio,
@@ -700,11 +709,14 @@ function DashboardView({
       </div>
 
       {/* SUMMARY CARDS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <SummaryCard icon="👥" label="Colaboradores" value={totalColaboradores} color={COLORS.primary} />
         <SummaryCard icon="⏱" label="Total Hs. Redondeadas" value={`${roundHours(totalHorasRedondeadas)}h`} color={COLORS.success} />
         <SummaryCard icon="📅" label="Días Trabajados" value={totalDiasTrabajados} color={COLORS.accent} />
         <SummaryCard icon="⭐" label="Horas Extra" value={formatMinToHHMM(totalHorasExtra)} color={COLORS.warning} />
+        <SummaryCard icon="🌙" label="Hs. Nocturnas" value={formatMinToHHMM(totalHorasNocturnas)} color="#6366f1" />
+        <SummaryCard icon="🌑" label="Días Noche" value={totalDiasNoche} color="#8b5cf6" />
+        <SummaryCard icon="💰" label="Recargos" value={totalRecargos} color={COLORS.danger} />
       </div>
 
       {/* DATA TABLE */}
@@ -736,6 +748,9 @@ function DashboardView({
                   <th style={thStyle}>Hs. Redondeadas</th>
                   <th style={{ ...thStyle, fontWeight: 800, color: COLORS.primary }}>Total Hs.</th>
                   <th style={thStyle}>Hs. Extra</th>
+                  <th style={{ ...thStyle, color: '#6366f1' }}>Hs. Nocturnas</th>
+                  <th style={{ ...thStyle, color: '#8b5cf6' }}>Días Noche</th>
+                  <th style={{ ...thStyle, color: COLORS.danger }}>Recargos</th>
                   <th style={thStyle}>Tardanzas</th>
                 </tr>
               </thead>
@@ -774,13 +789,24 @@ function DashboardView({
                         {roundHours(row.total_horas_redondeadas_min || 0)}h
                       </td>
                       <td style={tdStyle}>{formatMinToHHMM(row.total_hora_extra_min || 0)}</td>
+                      <td style={{ ...tdStyle, color: '#6366f1', fontWeight: (row.total_horas_nocturnas_min || 0) > 0 ? 600 : 400 }}>
+                        {formatMinToHHMM(row.total_horas_nocturnas_min || 0)}
+                      </td>
+                      <td style={{ ...tdStyle, color: '#8b5cf6' }}>{row.dias_noche || 0}</td>
+                      <td style={tdStyle}>
+                        {(row.recargos || 0) > 0 ? (
+                          <span style={{ background: '#fef2f2', color: COLORS.danger, padding: '0.15rem 0.5rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 700 }}>
+                            {row.recargos}
+                          </span>
+                        ) : '0'}
+                      </td>
                       <td style={tdStyle}>{row.dias_tarde || 0}</td>
                     </tr>
 
                     {/* Expanded Detail */}
                     {expandedColab === row.colaborador_id && (
                       <tr>
-                        <td colSpan={9} style={{ padding: 0, background: '#f0f4ff' }}>
+                        <td colSpan={12} style={{ padding: 0, background: '#f0f4ff' }}>
                           <div style={{ padding: '1rem 1.25rem', animation: 'fadeIn 0.2s ease-out' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                               <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: COLORS.primary }}>
@@ -805,6 +831,8 @@ function DashboardView({
                                     <th style={{ ...thStyleSmall, color: 'white' }}>Hs. Trabajadas</th>
                                     <th style={{ ...thStyleSmall, color: 'white' }}>Hs. Redondeadas</th>
                                     <th style={{ ...thStyleSmall, color: 'white', fontWeight: 800 }}>Total Hs.</th>
+                                    <th style={{ ...thStyleSmall, color: '#c4b5fd' }}>Hs. Noct.</th>
+                                    <th style={{ ...thStyleSmall, color: '#fca5a5' }}>Recargo</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -825,6 +853,16 @@ function DashboardView({
                                         <td style={tdStyleSmall}>{formatMinToHHMM(rec.horas_redondeadas_min || 0)}</td>
                                         <td style={{ ...tdStyleSmall, fontWeight: 700, color: COLORS.primary }}>
                                           {hoursRounded}h
+                                        </td>
+                                        <td style={{ ...tdStyleSmall, color: '#6366f1', fontWeight: (rec.horas_nocturnas_min || 0) > 0 ? 600 : 400 }}>
+                                          {(rec.horas_nocturnas_min || 0) > 0 ? formatMinToHHMM(rec.horas_nocturnas_min) : '—'}
+                                        </td>
+                                        <td style={tdStyleSmall}>
+                                          {rec.es_recargo ? (
+                                            <span style={{ background: '#fef2f2', color: COLORS.danger, padding: '0.1rem 0.4rem', borderRadius: 6, fontSize: '0.7rem', fontWeight: 700 }}>
+                                              SÍ
+                                            </span>
+                                          ) : '—'}
                                         </td>
                                       </tr>
                                     );
@@ -849,6 +887,9 @@ function DashboardView({
                   <td style={{ ...tdStyle, color: 'white' }}>{formatMinToHHMM(totalHorasRedondeadas)}</td>
                   <td style={{ ...tdStyle, color: 'white', fontSize: '1rem' }}>{roundHours(totalHorasRedondeadas)}h</td>
                   <td style={{ ...tdStyle, color: 'white' }}>{formatMinToHHMM(totalHorasExtra)}</td>
+                  <td style={{ ...tdStyle, color: '#c4b5fd' }}>{formatMinToHHMM(totalHorasNocturnas)}</td>
+                  <td style={{ ...tdStyle, color: '#c4b5fd' }}>{totalDiasNoche}</td>
+                  <td style={{ ...tdStyle, color: '#fca5a5' }}>{totalRecargos}</td>
                   <td style={{ ...tdStyle, color: 'white' }}>{totales.reduce((a, t) => a + (t.dias_tarde || 0), 0)}</td>
                 </tr>
               </tbody>

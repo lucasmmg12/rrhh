@@ -73,13 +73,14 @@ export async function upsertColaborador({ nombre_completo, area, sector, carga_h
   // Try to find existing
   const { data: existing } = await supabase
     .from('fichadas_colaboradores')
-    .select('id')
+    .select('id, area')
     .eq('nombre_completo', nombre_completo)
     .maybeSingle();
 
   if (existing) {
+    // Only update area if it's NOT already set (first-time mapping)
     const updates = { updated_at: new Date().toISOString() };
-    if (area) updates.area = area;
+    if (area && !existing.area) updates.area = area;  // Only set if empty
     if (sector) updates.sector = sector;
     if (carga_horaria_default) updates.carga_horaria_default = carga_horaria_default;
 
@@ -144,6 +145,10 @@ export async function guardarRegistros(importacion_id, colaborador_id, registros
     fichada_salida: reg.fichada_salida || null,
     horas_trabajadas_min: reg.horas_trabajadas_min || 0,
     horas_redondeadas_min: reg.horas_redondeadas_min || 0,
+    horas_nocturnas_min: reg.horas_nocturnas_min || 0,
+    es_turno_noche: reg.es_turno_noche || false,
+    es_recargo: reg.es_recargo || false,
+    turno_noche_merge: reg.datos_raw?.turno_noche || false,
     horario_entrada: reg.horario_asignado || null,
     carga_horaria: reg.carga_horaria || '00:00',
     datos_raw: reg.datos_raw || {},
@@ -203,6 +208,10 @@ export async function guardarTotalMensual(importacion_id, colaborador_id, totale
       dias_trabajados: totales.dias_trabajados || 0,
       dias_tarde: totales.dias_tarde || 0,
       total_hora_extra_min: totales.horas_extra_min || 0,
+      total_horas_nocturnas_min: totales.horas_nocturnas_min || 0,
+      dias_noche: totales.dias_noche || 0,
+      recargos: totales.recargos || 0,
+      total_horas_recargo_min: totales.horas_recargo_min || 0,
     });
 
   if (error) {
