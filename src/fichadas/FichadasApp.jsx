@@ -58,8 +58,6 @@ export default function FichadasApp() {
   const [filtroColaborador, setFiltroColaborador] = useState('');
   const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
-  const [filtroPeriodo, setFiltroPeriodo] = useState('mensual');
-  const [filtroCriterio, setFiltroCriterio] = useState('ninguno');
 
   // Detail view
   const [expandedColab, setExpandedColab] = useState(null);
@@ -71,13 +69,10 @@ export default function FichadasApp() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const filtros = {};
-      if (filtroPeriodo === 'mensual') {
-        filtros.periodo_mes = filtroMes;
-        filtros.periodo_anio = filtroAnio;
-      } else if (filtroPeriodo === 'anual') {
-        filtros.periodo_anio = filtroAnio;
-      }
+      const filtros = {
+        periodo_mes: filtroMes,
+        periodo_anio: filtroAnio,
+      };
       if (filtroArea) filtros.area = filtroArea;
       if (filtroColaborador) filtros.colaborador_id = filtroColaborador;
 
@@ -100,7 +95,7 @@ export default function FichadasApp() {
     } finally {
       setLoading(false);
     }
-  }, [filtroArea, filtroColaborador, filtroMes, filtroAnio, filtroPeriodo]);
+  }, [filtroArea, filtroColaborador, filtroMes, filtroAnio]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -207,13 +202,11 @@ export default function FichadasApp() {
     setExpandedColab(colaboradorId);
     try {
       const filtros = { colaborador_id: colaboradorId };
-      if (filtroPeriodo === 'mensual') {
-        const startDate = `${filtroAnio}-${String(filtroMes).padStart(2, '0')}-01`;
-        const lastDay = new Date(filtroAnio, filtroMes, 0).getDate();
-        const endDate = `${filtroAnio}-${String(filtroMes).padStart(2, '0')}-${lastDay}`;
-        filtros.fecha_desde = startDate;
-        filtros.fecha_hasta = endDate;
-      }
+      const startDate = `${filtroAnio}-${String(filtroMes).padStart(2, '0')}-01`;
+      const lastDay = new Date(filtroAnio, filtroMes, 0).getDate();
+      const endDate = `${filtroAnio}-${String(filtroMes).padStart(2, '0')}-${lastDay}`;
+      filtros.fecha_desde = startDate;
+      filtros.fecha_hasta = endDate;
       const records = await obtenerRegistros(filtros);
       setDetailRecords(records);
     } catch (err) {
@@ -239,11 +232,9 @@ export default function FichadasApp() {
   };
 
   // ─── FILTERED DATA ────────────────────────────────────────────
-  const filteredTotales = totales.filter(t => {
-    if (filtroCriterio === 'area' && filtroArea && t.area !== filtroArea) return false;
-    if (filtroCriterio === 'personal' && filtroColaborador && t.colaborador_id !== filtroColaborador) return false;
-    return true;
-  });
+  // Server-side filters (area, collaborator, mes, anio) already applied in loadData
+  // Client-side: just use totales directly
+  const filteredTotales = totales;
 
   // Summary stats
   const totalColaboradores = filteredTotales.length;
@@ -445,8 +436,6 @@ export default function FichadasApp() {
             filtroColaborador={filtroColaborador} setFiltroColaborador={setFiltroColaborador}
             filtroMes={filtroMes} setFiltroMes={setFiltroMes}
             filtroAnio={filtroAnio} setFiltroAnio={setFiltroAnio}
-            filtroPeriodo={filtroPeriodo} setFiltroPeriodo={setFiltroPeriodo}
-            filtroCriterio={filtroCriterio} setFiltroCriterio={setFiltroCriterio}
             areas={areas} colaboradores={colaboradores}
             // Detail
             expandedColab={expandedColab} toggleExpand={toggleExpand}
@@ -584,7 +573,6 @@ function DashboardView({
   totalHorasNocturnas, totalDiasNoche, totalRecargos, totalHorasRecargo,
   filtroArea, setFiltroArea, filtroColaborador, setFiltroColaborador,
   filtroMes, setFiltroMes, filtroAnio, setFiltroAnio,
-  filtroPeriodo, setFiltroPeriodo, filtroCriterio, setFiltroCriterio,
   areas, colaboradores,
   expandedColab, toggleExpand, detailRecords,
   onExportXLSX, onExportPDF, onExportDetailXLSX,
@@ -599,111 +587,57 @@ function DashboardView({
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: COLORS.text }}>
-            🔎 Configuración de Informes
+            🔎 Filtros
           </h3>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button onClick={onExportXLSX} style={{ ...btnSmall, background: '#065f46', color: 'white' }}>
+              📊 Exportar Excel
+            </button>
+            <button onClick={onExportPDF} style={{ ...btnSmall, background: COLORS.danger, color: 'white' }}>
+              📄 Exportar PDF
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
-          {/* Criterio de Período */}
-          <div style={{ ...filterGroupStyle }}>
-            <h4 style={filterGroupTitle}>Criterio de Período</h4>
-            {['diario', 'mensual', 'rango', 'anual', 'todo'].map(op => (
-              <label key={op} style={radioLabel}>
-                <input type="radio" name="periodo" value={op}
-                  checked={filtroPeriodo === op}
-                  onChange={() => setFiltroPeriodo(op)}
-                  style={radioInput}
-                />
-                <span style={{
-                  ...radioCustom,
-                  borderColor: filtroPeriodo === op ? COLORS.primary : '#cbd5e1',
-                  background: filtroPeriodo === op ? COLORS.primary : 'white',
-                }} />
-                <span style={{ fontSize: '0.82rem', color: COLORS.text, textTransform: 'capitalize' }}>{op}</span>
-              </label>
-            ))}
-
-            {(filtroPeriodo === 'mensual' || filtroPeriodo === 'diario') && (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <select value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={selectStyle}>
-                  {MESES.slice(1).map((m, i) => (
-                    <option key={i + 1} value={i + 1}>{m}</option>
-                  ))}
-                </select>
-                <input type="number" value={filtroAnio}
-                  onChange={e => setFiltroAnio(Number(e.target.value))}
-                  style={{ ...selectStyle, width: 80 }}
-                  min={2020} max={2030}
-                />
-              </div>
-            )}
-            {filtroPeriodo === 'anual' && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <label style={{ fontSize: '0.75rem', color: COLORS.textMuted }}>Año</label>
-                <input type="number" value={filtroAnio}
-                  onChange={e => setFiltroAnio(Number(e.target.value))}
-                  style={{ ...selectStyle, width: 80 }}
-                  min={2020} max={2030}
-                />
-              </div>
-            )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', alignItems: 'end' }}>
+          {/* Mes */}
+          <div>
+            <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Período</label>
+            <select value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={selectStyle}>
+              {MESES.slice(1).map((m, i) => (
+                <option key={i + 1} value={i + 1}>{m}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Criterio de Rango */}
-          <div style={{ ...filterGroupStyle }}>
-            <h4 style={filterGroupTitle}>Criterio de Rango</h4>
-            <div style={{ marginBottom: '0.5rem' }}>
-              <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>Buscar por Área</label>
-              <select value={filtroArea} onChange={e => setFiltroArea(e.target.value)} style={selectStyle}>
-                <option value="">Todas las Áreas</option>
-                {areas.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>Buscar por Colaborador</label>
-              <select value={filtroColaborador} onChange={e => setFiltroColaborador(e.target.value)} style={selectStyle}>
-                <option value="">Todos</option>
-                {colaboradores.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre_completo}</option>
-                ))}
-              </select>
-            </div>
+          {/* Año */}
+          <div>
+            <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Año</label>
+            <input type="number" value={filtroAnio}
+              onChange={e => setFiltroAnio(Number(e.target.value))}
+              style={selectStyle}
+              min={2020} max={2030}
+            />
           </div>
 
-          {/* Criterio de Selección */}
-          <div style={{ ...filterGroupStyle }}>
-            <h4 style={filterGroupTitle}>Criterio de Selección</h4>
-            {[
-              { value: 'area', label: 'por Área' },
-              { value: 'sector', label: 'por Sector' },
-              { value: 'personal', label: 'por Personal' },
-              { value: 'imputacion', label: 'por Imputación' },
-              { value: 'ninguno', label: 'Ningún Criterio' },
-            ].map(op => (
-              <label key={op.value} style={radioLabel}>
-                <input type="radio" name="criterio" value={op.value}
-                  checked={filtroCriterio === op.value}
-                  onChange={() => setFiltroCriterio(op.value)}
-                  style={radioInput}
-                />
-                <span style={{
-                  ...radioCustom,
-                  borderColor: filtroCriterio === op.value ? COLORS.primary : '#cbd5e1',
-                  background: filtroCriterio === op.value ? COLORS.primary : 'white',
-                }} />
-                <span style={{ fontSize: '0.82rem', color: COLORS.text }}>{op.label}</span>
-              </label>
-            ))}
+          {/* Área */}
+          <div>
+            <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Área</label>
+            <select value={filtroArea} onChange={e => setFiltroArea(e.target.value)} style={selectStyle}>
+              <option value="">Todas las Áreas</option>
+              {areas.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
 
-            {/* Export buttons */}
-            <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: `1px solid ${COLORS.border}`, display: 'flex', gap: '0.5rem' }}>
-              <button onClick={onExportXLSX} style={{ ...btnSmall, background: '#065f46', color: 'white', flex: 1 }}>
-                📊 Excel
-              </button>
-              <button onClick={onExportPDF} style={{ ...btnSmall, background: COLORS.danger, color: 'white', flex: 1 }}>
-                📄 PDF
-              </button>
-            </div>
+          {/* Colaborador */}
+          <div>
+            <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Colaborador</label>
+            <select value={filtroColaborador} onChange={e => setFiltroColaborador(e.target.value)} style={selectStyle}>
+              <option value="">Todos</option>
+              {colaboradores.map(c => (
+                <option key={c.id} value={c.id}>{c.nombre_completo}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -838,16 +772,33 @@ function DashboardView({
                                 <tbody>
                                   {detailRecords.map((rec, rIdx) => {
                                     const hoursRounded = roundHours(rec.horas_redondeadas_min || 0);
+                                    const isOvernight = rec.turno_noche_merge || rec.datos_raw?.turno_noche;
+                                    const fechaEntrada = new Date(rec.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' });
+                                    const fechaSalida = isOvernight && rec.datos_raw?.fecha_salida
+                                      ? new Date(rec.datos_raw.fecha_salida + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })
+                                      : null;
                                     return (
-                                      <tr key={rec.id || rIdx} style={{ background: rIdx % 2 === 0 ? 'white' : '#f8fafc' }}>
+                                      <tr key={rec.id || rIdx} style={{
+                                        background: rIdx % 2 === 0 ? 'white' : '#f8fafc',
+                                        ...(isOvernight ? { borderLeft: '3px solid #6366f1' } : {}),
+                                      }}>
                                         <td style={tdStyleSmall}>
-                                          {new Date(rec.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })}
+                                          {isOvernight ? (
+                                            <span>
+                                              {fechaEntrada}
+                                              <span style={{ color: '#6366f1', fontWeight: 600 }}> → {fechaSalida || '?'}</span>
+                                            </span>
+                                          ) : fechaEntrada}
+                                          {isOvernight && <span style={{ marginLeft: 4, fontSize: '0.65rem' }}>🌙</span>}
                                         </td>
                                         <td style={{ ...tdStyleSmall, color: rec.fichada_entrada ? COLORS.success : COLORS.textMuted }}>
                                           {rec.fichada_entrada || '—'}
                                         </td>
                                         <td style={{ ...tdStyleSmall, color: rec.fichada_salida ? '#dc2626' : COLORS.textMuted }}>
                                           {rec.fichada_salida || '—'}
+                                          {isOvernight && rec.fichada_salida && (
+                                            <span style={{ fontSize: '0.65rem', color: '#6366f1', marginLeft: 4 }}>(+1d)</span>
+                                          )}
                                         </td>
                                         <td style={tdStyleSmall}>{formatMinToHHMM(rec.horas_trabajadas_min || 0)}</td>
                                         <td style={tdStyleSmall}>{formatMinToHHMM(rec.horas_redondeadas_min || 0)}</td>
