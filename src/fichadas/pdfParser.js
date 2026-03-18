@@ -186,6 +186,11 @@ function extractData(lines) {
     result.colaboradores.push(currentColaborador);
   }
 
+  // Post-process: merge night shifts (entry on day N + exit on day N+1)
+  for (const colab of result.colaboradores) {
+    colab.registros = mergeNightShifts(colab.registros);
+  }
+
   // Calculate totals for each collaborator
   for (const colab of result.colaboradores) {
     calculateTotals(colab);
@@ -311,6 +316,87 @@ function parseFichadaLine(lineItems, dateMatch) {
   }
 
   return record;
+}
+
+/**
+ * Merge night shift records:
+ * When a collaborator has an entry-only record after 18:00 on day N,
+ * followed by an entry-only record before 14:00 on day N+1,
+ * merge them into a single record spanning overnight.
+ * 
+ * Example: Mar 10 entry 20:45 + Mar 11 entry 07:28 → one record: 20:45-07:28 = 10h43m
+ */
+function mergeNightShifts(registros) {
+  if (registros.length < 2) return registros;
+
+  // Sort by date
+  const sorted = [...registros].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const merged = [];
+  const skipIndices = new Set();
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (skipIndices.has(i)) continue;
+
+    const current = sorted[i];
+    const next = sorted[i + 1];
+
+    // Check if this is a night shift entry:
+    // - Has entrada but no salida
+    // - Entrada is after 18:00 (evening/night)
+    if (current.fichada_entrada && !current.fichada_salida && next) {
+      const entradaHour = parseInt(current.fichada_entrada.split(':')[0]);
+
+      if (entradaHour >= 18) {
+        // Check if next record is next day with only entrada (morning exit)
+        // and no salida
+        const nextHasOnlyEntrada = next.fichada_entrada && !next.fichada_salida;
+        const nextEntradaHour = next.fichada_entrada ? parseInt(next.fichada_entrada.split(':')[0]) : 99;
+
+        // Next day check
+        const currentDate = new Date(current.fecha + 'T12:00:00');
+        const nextDate = new Date(next.fecha + 'T12:00:00');
+        const diffDays = (nextDate - currentDate) / (1000 * 60 * 60 * 24);
+
+        if (nextHasOnlyEntrada && nextEntradaHour < 14 && diffDays === 1) {
+          // MERGE: entry from current, exit from next
+          const entradaParts = current.fichada_entrada.split(':').map(Number);
+          const salidaParts = next.fichada_entrada.split(':').map(Number);
+          const entradaMin = entradaParts[0] * 60 + entradaParts[1];
+          const salidaMin = salidaParts[0] * 60 + salidaParts[1];
+
+          // Calculate overnight hours: from entrada to midnight + midnight to salida
+          let workedMin = (24 * 60 - entradaMin) + salidaMin;
+
+          // Rounding rule
+          const fullHours = Math.floor(workedMin / 60);
+          const remainingMin = workedMin % 60;
+          const redondeadasMin = remainingMin >= 45 ? (fullHours + 1) * 60 : fullHours * 60;
+
+          console.log(`  🌙 Turno noche detectado: ${current.fecha} ${current.fichada_entrada} → ${next.fecha} ${next.fichada_entrada} = ${Math.floor(workedMin/60)}h${workedMin%60}m`);
+
+          merged.push({
+            ...current,
+            fichada_salida: next.fichada_entrada,
+            horas_trabajadas_min: workedMin,
+            horas_redondeadas_min: redondeadasMin,
+            datos_raw: {
+              ...current.datos_raw,
+              turno_noche: true,
+              fecha_salida: next.fecha,
+            },
+          });
+
+          skipIndices.add(i + 1); // Skip the next record (it's the exit)
+          continue;
+        }
+      }
+    }
+
+    // Not a night shift — keep as-is
+    merged.push(current);
+  }
+
+  return merged;
 }
 
 /**

@@ -233,11 +233,14 @@ export async function obtenerTotalesMensuales(filtros = {}) {
 }
 
 // ─── PROCESO COMPLETO: Parse + Save ─────────────────────────────
-export async function procesarYGuardarFichadas(parsedData, nombreArchivo) {
+export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProgress) {
+  const emit = (event) => { if (onProgress) onProgress(event); };
+
   console.log(`[Service] Processing ${parsedData.colaboradores.length} collaborators for ${parsedData.area} ${parsedData.mes}/${parsedData.anio}`);
 
   // 0. Clean previous imports for same area+period
   if (parsedData.area && parsedData.mes && parsedData.anio) {
+    emit({ type: 'cleaning', area: parsedData.area, periodo: `${parsedData.mes}/${parsedData.anio}` });
     await limpiarImportacionesPrevias(parsedData.area, parsedData.mes, parsedData.anio);
   }
 
@@ -250,12 +253,17 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo) {
     total_colaboradores: parsedData.colaboradores.length,
     total_registros: parsedData.colaboradores.reduce((acc, c) => acc + c.registros.length, 0),
   });
+  emit({ type: 'import_created' });
 
   const resultados = [];
   let errores = 0;
+  const total = parsedData.colaboradores.length;
 
   // 2. Process each collaborator
-  for (const colab of parsedData.colaboradores) {
+  for (let i = 0; i < parsedData.colaboradores.length; i++) {
+    const colab = parsedData.colaboradores[i];
+    emit({ type: 'colaborador_start', nombre: colab.nombre, index: i, total });
+
     try {
       // Upsert collaborator
       const colaborador_id = await upsertColaborador({
@@ -286,14 +294,16 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo) {
         diasTrabajados: colab.totales.dias_trabajados,
       });
 
+      emit({ type: 'colaborador_done', nombre: colab.nombre, registros: colab.registros.length, dias: colab.totales.dias_trabajados });
       console.log(`  ✓ ${colab.nombre}: ${colab.registros.length} registros, ${colab.totales.dias_trabajados} días`);
     } catch (err) {
       console.error(`  ✗ Error processing ${colab.nombre}:`, err.message);
+      emit({ type: 'colaborador_error', nombre: colab.nombre, error: err.message });
       errores++;
-      // Continue with next collaborator
     }
   }
 
+  emit({ type: 'done', ok: resultados.length, errores });
   console.log(`[Service] Done: ${resultados.length} OK, ${errores} errors`);
 
   return {

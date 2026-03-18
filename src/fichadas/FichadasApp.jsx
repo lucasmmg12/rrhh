@@ -41,6 +41,10 @@ export default function FichadasApp() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [progressLog, setProgressLog] = useState([]);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const progressRef = useRef(null);
 
   // Data
   const [totales, setTotales] = useState([]);
@@ -110,19 +114,52 @@ export default function FichadasApp() {
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setProgressLog([]);
+    setProgressTotal(0);
+    setProgressCurrent(0);
+
+    const addLog = (msg, type = 'info') => {
+      setProgressLog(prev => [...prev, { msg, type, time: new Date() }]);
+      // Auto-scroll
+      setTimeout(() => {
+        if (progressRef.current) progressRef.current.scrollTop = progressRef.current.scrollHeight;
+      }, 50);
+    };
 
     try {
       // 1. Parse PDF
+      addLog(`📄 Leyendo PDF: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
       const parsed = await parseFichadasPDF(file);
 
       if (!parsed.colaboradores.length) {
+        addLog('❌ No se encontraron datos de colaboradores', 'error');
         setError('No se encontraron datos de colaboradores en el PDF. Verificá el formato.');
         setLoading(false);
         return;
       }
 
-      // 2. Save to database
-      const result = await procesarYGuardarFichadas(parsed, file.name);
+      addLog(`✅ PDF parseado: ${parsed.colaboradores.length} colaboradores, Área: ${parsed.area}, Período: ${parsed.mes}/${parsed.anio}`, 'success');
+      setProgressTotal(parsed.colaboradores.length);
+
+      // 2. Save to database with progress callback
+      const onProgress = (event) => {
+        if (event.type === 'cleaning') {
+          addLog(`🧹 Limpiando importaciones previas de ${event.area} ${event.periodo}...`);
+        } else if (event.type === 'import_created') {
+          addLog('📋 Registro de importación creado');
+        } else if (event.type === 'colaborador_start') {
+          setProgressCurrent(event.index + 1);
+          addLog(`⏳ Procesando ${event.nombre} (${event.index + 1}/${event.total})...`);
+        } else if (event.type === 'colaborador_done') {
+          addLog(`✓ ${event.nombre}: ${event.registros} registros, ${event.dias} días`, 'success');
+        } else if (event.type === 'colaborador_error') {
+          addLog(`✗ Error en ${event.nombre}: ${event.error}`, 'error');
+        } else if (event.type === 'done') {
+          addLog(`🎉 Importación completa: ${event.ok} exitosos, ${event.errores} errores`, event.errores > 0 ? 'warning' : 'success');
+        }
+      };
+
+      const result = await procesarYGuardarFichadas(parsed, file.name, onProgress);
 
       const totalRegs = result.resultados.reduce((a, r) => a + r.registros, 0);
       const errMsg = result.errores > 0 ? ` (${result.errores} con advertencias)` : '';
@@ -134,13 +171,14 @@ export default function FichadasApp() {
       // Update filters to match imported data
       if (parsed.mes) setFiltroMes(parsed.mes);
       if (parsed.anio) setFiltroAnio(parsed.anio);
-      setFiltroArea(''); // Don't auto-filter, show all
+      setFiltroArea('');
 
-      // Reload data
+      addLog('📊 Cargando dashboard...');
       await loadData();
       setView('dashboard');
     } catch (err) {
       console.error('Upload error:', err);
+      addLog(`❌ Error fatal: ${err.message}`, 'error');
       setError('Error al procesar el PDF: ' + err.message);
     } finally {
       setLoading(false);
@@ -303,15 +341,71 @@ export default function FichadasApp() {
       {loading && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(255,255,255,0.8)', zIndex: 999,
+          background: 'rgba(255,255,255,0.92)', zIndex: 999,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(4px)',
+          backdropFilter: 'blur(6px)',
         }}>
-          <div style={{ width: 48, height: 48, border: `4px solid ${COLORS.border}`,
-            borderTopColor: COLORS.primary, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ color: COLORS.textSecondary, marginTop: '1rem', fontSize: '0.9rem' }}>
-            Procesando datos...
-          </p>
+          <div style={{
+            background: 'white', borderRadius: 16, padding: '2rem',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: `1px solid ${COLORS.border}`,
+            width: '90%', maxWidth: 520, animation: 'fadeIn 0.3s ease-out',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div style={{ width: 44, height: 44, border: `4px solid ${COLORS.border}`,
+                borderTopColor: COLORS.primary, borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: COLORS.text }}>
+                  Procesando Fichadas
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: COLORS.textMuted }}>
+                  {progressTotal > 0
+                    ? `${progressCurrent} de ${progressTotal} colaboradores`
+                    : 'Iniciando...'}
+                </p>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            {progressTotal > 0 && (
+              <div style={{
+                height: 6, background: COLORS.border, borderRadius: 3,
+                marginBottom: '1rem', overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%', background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.accent})`,
+                  borderRadius: 3, transition: 'width 0.3s ease',
+                  width: `${(progressCurrent / progressTotal) * 100}%`,
+                }} />
+              </div>
+            )}
+
+            {/* Live Log */}
+            <div ref={progressRef} style={{
+              maxHeight: 280, overflowY: 'auto', background: '#0f172a',
+              borderRadius: 10, padding: '0.75rem', fontFamily: "'Consolas', 'Monaco', monospace",
+              fontSize: '0.72rem', lineHeight: 1.6,
+            }}>
+              {progressLog.length === 0 ? (
+                <p style={{ color: '#64748b', margin: 0 }}>Esperando...</p>
+              ) : (
+                progressLog.map((entry, i) => (
+                  <div key={i} style={{
+                    color: entry.type === 'success' ? '#4ade80'
+                         : entry.type === 'error' ? '#f87171'
+                         : entry.type === 'warning' ? '#fbbf24'
+                         : '#94a3b8',
+                    animation: 'fadeIn 0.15s ease-out',
+                  }}>
+                    <span style={{ color: '#475569', marginRight: 6 }}>
+                      {entry.time.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    {entry.msg}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 
