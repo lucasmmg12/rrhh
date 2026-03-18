@@ -34,6 +34,17 @@ const MODULES = [
     color: '#d97706',
     bgGradient: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
   },
+  {
+    id: 'fichadas',
+    icon: '🕐',
+    title: 'Control de Fichadas',
+    description: 'Importá PDFs de fichadas, calculá horas totalizadas con redondeo automático y exportá a Excel o PDF.',
+    badge: 'Nuevo',
+    badgeColor: '#7c3aed',
+    href: '/fichadas.html',
+    color: '#7c3aed',
+    bgGradient: 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)',
+  },
 ];
 
 const HELP_SECTIONS = [

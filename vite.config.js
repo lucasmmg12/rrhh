@@ -12,6 +12,7 @@ export default defineConfig({
         organigrama: resolve(__dirname, 'organigrama.html'),
         calendario: resolve(__dirname, 'calendario.html'),
         agenda: resolve(__dirname, 'agenda.html'),
+        fichadas: resolve(__dirname, 'fichadas.html'),
       },
     },
   },
