@@ -884,3 +884,128 @@ body {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ============================================
+   CANCELLED EVENTS
+   ============================================ */
+.cal-event-cancelled {
+  opacity: 0.55 !important;
+  text-decoration: line-through;
+  position: relative;
+}
+
+.cal-event-cancelled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(255,255,255,0.15) 3px,
+    rgba(255,255,255,0.15) 4px
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* ============================================
+   RECIPIENTS SELECTOR
+   ============================================ */
+.cal-recipients-section {
+  border: 1px solid var(--cal-border);
+  border-radius: var(--cal-radius-sm);
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.cal-recipients-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.cal-recipients-header:hover {
+  background: #f1f5f9;
+}
+
+.cal-recipients-body {
+  border-top: 1px solid var(--cal-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 600px; }
+}
+
+.cal-recipient-group {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.cal-recipient-group:last-child {
+  border-bottom: none;
+}
+
+.cal-recipient-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cal-text);
+  background: white;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cal-recipient-group-header:hover {
+  background: #f8fafc;
+}
+
+.cal-recipient-group-header input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--cal-primary);
+  pointer-events: none;
+}
+
+.cal-recipient-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-recipient-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem 0.35rem 1.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--cal-text);
+  transition: background 0.1s;
+}
+
+.cal-recipient-item:hover {
+  background: #f0f9ff;
+}
+
+.cal-recipient-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--cal-primary);
+}
+
+.cal-recipient-item span:last-child {
+  margin-left: auto;
+}

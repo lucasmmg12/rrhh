@@ -1,7 +1,8 @@
 import { supabase } from '../../supabaseClient';
 
 // ============================================
-// CALENDAR SERVICE — Supabase CRUD
+// CALENDAR SERVICE — Supabase CRUD (V2)
+// Features: Cancel Events, TyS, Smart Messaging
 // ============================================
 
 export const calendarService = {
@@ -39,11 +40,13 @@ export const calendarService = {
       location: event.location || 'Sala de Ateneo',
       attendees_count: event.attendees_count || 0,
       requires_coffee: event.requires_coffee || false,
+      requires_tys: event.requires_tys || false,
       notify_whatsapp: event.notify_whatsapp ?? true,
       is_recurring: event.is_recurring || false,
       recurrence_rule: event.recurrence_rule || null,
       recurrence_parent_id: event.recurrence_parent_id || null,
       links: event.links || [],
+      status: 'active',
     };
 
     const { data, error } = await supabase
@@ -69,6 +72,44 @@ export const calendarService = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  // --- CANCEL EVENT (soft delete) ---
+  async cancelEvent(id) {
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  // Cancel all events in a recurrence group
+  async cancelRecurrenceGroup(eventId) {
+    const { data: event, error: fetchError } = await supabase
+      .from('calendar_events')
+      .select('id, recurrence_parent_id')
+      .eq('id', eventId)
+      .single();
+    if (fetchError) throw fetchError;
+
+    const parentId = event.recurrence_parent_id || event.id;
+
+    // Cancel all children
+    const { error: childError } = await supabase
+      .from('calendar_events')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('recurrence_parent_id', parentId);
+    if (childError) throw childError;
+
+    // Cancel the parent itself
+    const { error: parentError } = await supabase
+      .from('calendar_events')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', parentId);
+    if (parentError) throw parentError;
   },
 
   async deleteEvent(id) {
@@ -139,11 +180,13 @@ export const calendarService = {
           location: parentEvent.location,
           attendees_count: parentEvent.attendees_count || 0,
           requires_coffee: parentEvent.requires_coffee || false,
+          requires_tys: parentEvent.requires_tys || false,
           notify_whatsapp: parentEvent.notify_whatsapp ?? true,
           is_recurring: true,
           recurrence_rule: parentEvent.recurrence_rule,
           recurrence_parent_id: parentEvent.id,
           links: parentEvent.links || [],
+          status: 'active',
         });
       }
       current.setDate(current.getDate() + 1);
@@ -161,6 +204,47 @@ export const calendarService = {
     }
 
     return events.length;
+  },
+
+  // --- CONTACTS (with roles) ---
+  async getContacts() {
+    const { data, error } = await supabase
+      .from('notification_contacts')
+      .select('*')
+      .order('role')
+      .order('name');
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getActiveContacts() {
+    const { data, error } = await supabase
+      .from('notification_contacts')
+      .select('*')
+      .eq('is_active', true)
+      .order('role')
+      .order('name');
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getContactsByRole(role) {
+    const { data, error } = await supabase
+      .from('notification_contacts')
+      .select('*')
+      .eq('role', role)
+      .eq('is_active', true)
+      .order('name');
+    if (error) throw error;
+    return data || [];
+  },
+
+  async updateContactRole(contactId, role) {
+    const { error } = await supabase
+      .from('notification_contacts')
+      .update({ role })
+      .eq('id', contactId);
+    if (error) throw error;
   },
 
   // --- ATTACHMENTS ---
@@ -252,6 +336,7 @@ export const calendarService = {
       color: h.color || '#dc2626',
       location: '',
       is_recurring: false,
+      status: 'active',
     }));
 
     const { error } = await supabase

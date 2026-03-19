@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { calendarService } from './services/calendarService';
-import { sendTestMessage } from './services/whatsappService';
+import { sendTestMessage, notifySelectedContacts, notifyCancellation } from './services/whatsappService';
 import { holidays2026, recurringMeetings } from './data/holidays2026';
 
 // ===== HELPERS =====
@@ -89,6 +89,7 @@ export default function CalendarApp({ isReadonly = false }) {
   const [isLoading, setIsLoading] = useState(true);
   const [modalState, setModalState] = useState(null);
   const [attachments, setAttachments] = useState([]);
+  const [allContacts, setAllContacts] = useState([]);
 
   // ===== AUTH STATE =====
   const [user, setUser] = useState(null);
@@ -131,13 +132,20 @@ export default function CalendarApp({ isReadonly = false }) {
     }
   }, [currentDate, view]);
 
+  const loadContacts = useCallback(async () => {
+    try {
+      const data = await calendarService.getContacts();
+      setAllContacts(data);
+    } catch (e) { console.error('Failed to load contacts:', e); }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
       try {
-        // Seed holidays on first load
         await calendarService.seedHolidays(holidays2026);
         await loadEvents();
+        if (isAdmin) await loadContacts();
       } catch (e) {
         console.error('Init error:', e);
       } finally {
@@ -235,6 +243,21 @@ export default function CalendarApp({ isReadonly = false }) {
     } catch (e) {
       console.error('Delete failed:', e);
       alert('Error al eliminar evento');
+    }
+  };
+
+  const handleCancelEvent = async (id, cancelAll = false) => {
+    try {
+      if (cancelAll) {
+        await calendarService.cancelRecurrenceGroup(id);
+      } else {
+        await calendarService.cancelEvent(id);
+      }
+      setModalState(null);
+      await loadEvents();
+    } catch (e) {
+      console.error('Cancel failed:', e);
+      alert('Error al cancelar evento');
     }
   };
 
@@ -365,8 +388,10 @@ export default function CalendarApp({ isReadonly = false }) {
           onCreate={handleCreateEvent}
           onUpdate={handleUpdateEvent}
           onDelete={handleDeleteEvent}
+          onCancel={handleCancelEvent}
           onEdit={() => setModalState({ mode: 'edit', event: modalState.event })}
           isAdmin={isAdmin}
+          allContacts={allContacts}
         />
       )}
 
@@ -423,18 +448,21 @@ function MonthView({ currentDate, events, onDayClick, onEventClick }) {
                 <span className="cal-blocked-label">{holidayEvent.title}</span>
               </div>
             )}
-            {!isBlocked && nonHolidayEvents.slice(0, maxVisible).map(ev => (
+            {!isBlocked && nonHolidayEvents.slice(0, maxVisible).map(ev => {
+              const isCancelled = ev.status === 'cancelled';
+              return (
               <div
                 key={ev.id}
-                className="cal-event-pill"
-                style={{ background: ev.color || '#0284c7' }}
+                className={`cal-event-pill ${isCancelled ? 'cal-event-cancelled' : ''}`}
+                style={{ background: isCancelled ? '#94a3b8' : (ev.color || '#0284c7') }}
                 onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-                title={`${ev.title} — ${formatTime(ev.start_time)}`}
+                title={`${ev.title} — ${formatTime(ev.start_time)}${isCancelled ? ' (CANCELADO)' : ''}`}
               >
                 <span className="pill-time">{formatTime(ev.start_time)}</span>
-                <span>{ev.requires_coffee && '☕ '}{ev.title}</span>
+                <span>{isCancelled ? '🚫 ' : ''}{ev.requires_coffee && '☕ '}{ev.requires_tys && '🖥️ '}{ev.title}</span>
               </div>
-            ))}
+              );
+            })}
             {!isBlocked && nonHolidayEvents.length > maxVisible && (
               <div className="cal-more-events" onClick={(e) => { e.stopPropagation(); }}>
                 +{nonHolidayEvents.length - maxVisible} más
@@ -530,20 +558,21 @@ function WeekView({ currentDate, events, onSlotClick, onEventClick }) {
                 const endHour = end.getHours() + end.getMinutes() / 60;
                 const top = (startHour - 7) * 60;
                 const height = Math.max((endHour - startHour) * 60, 20);
+                const isCancelled = ev.status === 'cancelled';
 
                 return (
                   <div
                     key={ev.id}
-                    className="cal-week-event"
+                    className={`cal-week-event ${isCancelled ? 'cal-event-cancelled' : ''}`}
                     style={{
                       top: `${top + 65}px`,
                       height: `${height}px`,
-                      background: ev.color || '#0284c7',
+                      background: isCancelled ? '#94a3b8' : (ev.color || '#0284c7'),
                     }}
                     onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
                   >
-                    <div className="ev-title">{ev.requires_coffee && '☕ '}{ev.title}</div>
-                    <div className="ev-time">{formatTime(ev.start_time)} – {formatTime(ev.end_time)}</div>
+                    <div className="ev-title">{isCancelled ? '🚫 ' : ''}{ev.requires_coffee && '☕ '}{ev.requires_tys && '🖥️ '}{ev.title}</div>
+                    <div className="ev-time">{formatTime(ev.start_time)} – {formatTime(ev.end_time)}{isCancelled ? ' • CANCELADO' : ''}</div>
                   </div>
                 );
               })}
@@ -556,15 +585,23 @@ function WeekView({ currentDate, events, onSlotClick, onEventClick }) {
 }
 
 // ===== EVENT MODAL =====
-function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, onEdit, isAdmin = false }) {
+function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, onCancel, onEdit, isAdmin = false, allContacts = [] }) {
   const isViewMode = mode === 'view';
   const isEditMode = mode === 'edit';
   const isCreateMode = mode === 'create';
+  const isCancelled = event?.status === 'cancelled';
 
   const defaultStart = date
     ? new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours() || 9, 0)
     : new Date();
   const defaultEnd = new Date(defaultStart.getTime() + 3600000);
+
+  // Group contacts by role
+  const contactsByRole = useMemo(() => ({
+    general: allContacts.filter(c => (c.role || 'general') === 'general' && c.is_active),
+    cocina: allContacts.filter(c => c.role === 'cocina' && c.is_active),
+    tys: allContacts.filter(c => c.role === 'tys' && c.is_active),
+  }), [allContacts]);
 
   const [form, setForm] = useState({
     title: event?.title || '',
@@ -576,6 +613,7 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
     location: event?.location || 'Sala de Ateneo',
     attendees_count: event?.attendees_count || 0,
     requires_coffee: event?.requires_coffee || false,
+    requires_tys: event?.requires_tys || false,
     notify_whatsapp: event?.notify_whatsapp ?? true,
     is_recurring: event?.is_recurring || false,
     recurrence_days: event?.recurrence_rule?.days || [],
@@ -583,11 +621,19 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
     links: event?.links || [],
   });
 
+  // Selected contact IDs for notification
+  const [selectedContacts, setSelectedContacts] = useState(() => {
+    // Default: select all general contacts
+    return allContacts.filter(c => (c.role || 'general') === 'general' && c.is_active).map(c => c.id);
+  });
+  const [showRecipients, setShowRecipients] = useState(false);
+
   const [newLink, setNewLink] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState([]); // Files queued for upload after create
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Load attachments for existing events
   useEffect(() => {
@@ -596,7 +642,42 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
     }
   }, [event?.id]);
 
-  const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+  const updateField = (key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+    // Auto-add/remove role contacts when toggling coffee or tys
+    if (key === 'requires_coffee') {
+      const cocinaIds = contactsByRole.cocina.map(c => c.id);
+      if (value) {
+        setSelectedContacts(prev => [...new Set([...prev, ...cocinaIds])]);
+      } else {
+        setSelectedContacts(prev => prev.filter(id => !cocinaIds.includes(id)));
+      }
+    }
+    if (key === 'requires_tys') {
+      const tysIds = contactsByRole.tys.map(c => c.id);
+      if (value) {
+        setSelectedContacts(prev => [...new Set([...prev, ...tysIds])]);
+      } else {
+        setSelectedContacts(prev => prev.filter(id => !tysIds.includes(id)));
+      }
+    }
+  };
+
+  const toggleContact = (contactId) => {
+    setSelectedContacts(prev =>
+      prev.includes(contactId) ? prev.filter(id => id !== contactId) : [...prev, contactId]
+    );
+  };
+
+  const toggleRoleGroup = (role) => {
+    const ids = contactsByRole[role]?.map(c => c.id) || [];
+    const allSelected = ids.every(id => selectedContacts.includes(id));
+    if (allSelected) {
+      setSelectedContacts(prev => prev.filter(id => !ids.includes(id)));
+    } else {
+      setSelectedContacts(prev => [...new Set([...prev, ...ids])]);
+    }
+  };
 
   const toggleRecurrenceDay = (day) => {
     setForm(prev => {
@@ -631,9 +712,11 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
       location: form.location,
       attendees_count: parseInt(form.attendees_count) || 0,
       requires_coffee: form.requires_coffee,
+      requires_tys: form.requires_tys,
       notify_whatsapp: form.notify_whatsapp,
       is_recurring: form.is_recurring,
       links: form.links,
+      selectedContacts: selectedContacts,
       recurrence_rule: form.is_recurring ? {
         frequency: 'weekly',
         days: form.recurrence_days,
@@ -691,7 +774,7 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
     return (
       <div className="cal-modal-overlay" onClick={onClose}>
         <div className="cal-modal" onClick={e => e.stopPropagation()} style={{
-          borderTop: `4px solid ${event.color}`,
+          borderTop: `4px solid ${isCancelled ? '#94a3b8' : event.color}`,
           overflow: 'hidden'
         }}>
           <div className="cal-modal-header" style={{
@@ -706,6 +789,16 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
           </div>
 
           <div className="cal-modal-body">
+            {isCancelled && (
+              <div style={{
+                padding: '0.6rem 1rem', borderRadius: '8px',
+                background: '#fef2f2', border: '1px solid #fecaca',
+                color: '#dc2626', fontWeight: 700, fontSize: '0.85rem',
+                display: 'flex', alignItems: 'center', gap: '0.5rem'
+              }}>
+                🚫 EVENTO CANCELADO
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.85rem', color: '#475569' }}>
               <span>📅</span>
               <span>{formatDate(event.start_time)}</span>
@@ -737,7 +830,7 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
               )}
             </div>
 
-            {/* Attendees & Coffee badges */}
+            {/* Attendees, Coffee, TyS badges */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.8rem' }}>
               {event.attendees_count > 0 && (
                 <span style={{ padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#f0f9ff', color: '#0369a1', fontWeight: 600 }}>
@@ -747,6 +840,11 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
               {event.requires_coffee && (
                 <span style={{ padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
                   ☕ Coffee
+                </span>
+              )}
+              {event.requires_tys && (
+                <span style={{ padding: '0.2rem 0.6rem', borderRadius: '12px', background: '#ede9fe', color: '#5b21b6', fontWeight: 600 }}>
+                  🖥️ TyS
                 </span>
               )}
               {event.notify_whatsapp && (
@@ -812,10 +910,39 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
           </div>
 
           <div className="cal-modal-footer">
-            {isAdmin && !showDeleteConfirm && (
-              <button className="cal-btn cal-btn-danger" onClick={() => setShowDeleteConfirm(true)}>
-                🗑 Eliminar
-              </button>
+            {isAdmin && !showDeleteConfirm && !showCancelConfirm && (
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className="cal-btn cal-btn-danger" onClick={() => setShowDeleteConfirm(true)}>
+                  🗑 Eliminar
+                </button>
+                {!isCancelled && (
+                  <button className="cal-btn" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }} onClick={() => setShowCancelConfirm(true)}>
+                    🚫 Cancelar Evento
+                  </button>
+                )}
+              </div>
+            )}
+            {showCancelConfirm && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#92400e' }}>¿Cancelar evento?</span>
+                <button
+                  className="cal-btn" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}
+                  onClick={() => { onCancel(event.id, false); }}
+                >
+                  Solo este
+                </button>
+                {event.is_recurring && (
+                  <button
+                    className="cal-btn" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', background: '#92400e', color: 'white', border: '1px solid #92400e' }}
+                    onClick={() => { onCancel(event.id, true); }}
+                  >
+                    Todo el grupo
+                  </button>
+                )}
+                <button className="cal-btn cal-btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setShowCancelConfirm(false)}>
+                  Volver
+                </button>
+              </div>
             )}
             {showDeleteConfirm && (
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -841,15 +968,15 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
                   style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
                   onClick={() => setShowDeleteConfirm(false)}
                 >
-                  Cancelar
+                  Volver
                 </button>
               </div>
             )}
-            {!isAdmin && !showDeleteConfirm && <div></div>}
-            {!showDeleteConfirm && (
+            {!isAdmin && !showDeleteConfirm && !showCancelConfirm && <div></div>}
+            {!showDeleteConfirm && !showCancelConfirm && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button className="cal-btn cal-btn-secondary" onClick={onClose}>Cerrar</button>
-                {isAdmin && <button className="cal-btn cal-btn-primary" onClick={onEdit}>✏️ Editar</button>}
+                {isAdmin && !isCancelled && <button className="cal-btn cal-btn-primary" onClick={onEdit}>✏️ Editar</button>}
               </div>
             )}
           </div>
@@ -945,8 +1072,8 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
             </div>
           </div>
 
-          {/* Coffee & WhatsApp toggles */}
-          <div className="cal-form-row" style={{ gap: '1.5rem' }}>
+          {/* Coffee, TyS & WhatsApp toggles */}
+          <div className="cal-form-row" style={{ gap: '0.75rem', gridTemplateColumns: '1fr 1fr 1fr' }}>
             <div className="cal-recurrence-toggle" style={{ flex: 1 }}>
               <input
                 type="checkbox"
@@ -955,7 +1082,18 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
                 id="coffee-check"
               />
               <label htmlFor="coffee-check" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
-                ☕ Preparar Coffee
+                ☕ Coffee
+              </label>
+            </div>
+            <div className="cal-recurrence-toggle" style={{ flex: 1 }}>
+              <input
+                type="checkbox"
+                checked={form.requires_tys}
+                onChange={e => updateField('requires_tys', e.target.checked)}
+                id="tys-check"
+              />
+              <label htmlFor="tys-check" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
+                🖥️ TyS
               </label>
             </div>
             <div className="cal-recurrence-toggle" style={{ flex: 1 }}>
@@ -966,10 +1104,96 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
                 id="wa-notify-check"
               />
               <label htmlFor="wa-notify-check" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
-                📱 Notificar por WA (20 min antes)
+                📱 WA
               </label>
             </div>
           </div>
+
+          {/* Collapsible Recipients Selector */}
+          {form.notify_whatsapp && (
+            <div className="cal-recipients-section">
+              <div
+                className="cal-recipients-header"
+                onClick={() => setShowRecipients(!showRecipients)}
+              >
+                <span style={{ fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  📱 Destinatarios ({selectedContacts.length} seleccionados)
+                </span>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', transition: 'transform 0.2s', transform: showRecipients ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+              </div>
+
+              {showRecipients && (
+                <div className="cal-recipients-body">
+                  {/* General / Limpieza group */}
+                  {contactsByRole.general.length > 0 && (
+                    <div className="cal-recipient-group">
+                      <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('general')}>
+                        <input type="checkbox" readOnly checked={contactsByRole.general.every(c => selectedContacts.includes(c.id))} />
+                        <span>🧹 General / Limpieza ({contactsByRole.general.length})</span>
+                      </div>
+                      <div className="cal-recipient-list">
+                        {contactsByRole.general.map(c => (
+                          <label key={c.id} className="cal-recipient-item">
+                            <input type="checkbox" checked={selectedContacts.includes(c.id)} onChange={() => toggleContact(c.id)} />
+                            <span>{c.name}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{c.phone}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cocina group */}
+                  <div className="cal-recipient-group">
+                    <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('cocina')} style={form.requires_coffee ? { background: '#fef3c7', borderColor: '#fde68a' } : {}}>
+                      <input type="checkbox" readOnly checked={contactsByRole.cocina.length > 0 && contactsByRole.cocina.every(c => selectedContacts.includes(c.id))} />
+                      <span>☕ Cocina ({contactsByRole.cocina.length})</span>
+                      {form.requires_coffee && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#92400e', background: '#fde68a', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>AUTO</span>}
+                    </div>
+                    {contactsByRole.cocina.length > 0 ? (
+                      <div className="cal-recipient-list">
+                        {contactsByRole.cocina.map(c => (
+                          <label key={c.id} className="cal-recipient-item">
+                            <input type="checkbox" checked={selectedContacts.includes(c.id)} onChange={() => toggleContact(c.id)} />
+                            <span>{c.name}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{c.phone}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        ⚠️ No hay contactos de Cocina. Agregalos desde "Contactos WA".
+                      </div>
+                    )}
+                  </div>
+
+                  {/* TyS group */}
+                  <div className="cal-recipient-group">
+                    <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('tys')} style={form.requires_tys ? { background: '#ede9fe', borderColor: '#c4b5fd' } : {}}>
+                      <input type="checkbox" readOnly checked={contactsByRole.tys.length > 0 && contactsByRole.tys.every(c => selectedContacts.includes(c.id))} />
+                      <span>🖥️ TyS ({contactsByRole.tys.length})</span>
+                      {form.requires_tys && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#5b21b6', background: '#ddd6fe', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>AUTO</span>}
+                    </div>
+                    {contactsByRole.tys.length > 0 ? (
+                      <div className="cal-recipient-list">
+                        {contactsByRole.tys.map(c => (
+                          <label key={c.id} className="cal-recipient-item">
+                            <input type="checkbox" checked={selectedContacts.includes(c.id)} onChange={() => toggleContact(c.id)} />
+                            <span>{c.name}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{c.phone}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        ⚠️ No hay contactos de TyS. Agregalos desde "Contactos WA".
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="cal-form-group">
             <label>Descripción</label>
@@ -1202,9 +1426,16 @@ function ContactsPanel({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newRole, setNewRole] = useState('general');
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState(null);
   const [testResult, setTestResult] = useState(null);
+
+  const ROLE_CONFIG = {
+    general: { label: '🧹 General', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
+    cocina: { label: '☕ Cocina', bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
+    tys: { label: '🖥️ TyS', bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
+  };
 
   const loadContacts = async () => {
     try {
@@ -1228,10 +1459,11 @@ function ContactsPanel({ onClose }) {
     try {
       const { error } = await supabase
         .from('notification_contacts')
-        .insert({ name: newName.trim(), phone: newPhone.trim() });
+        .insert({ name: newName.trim(), phone: newPhone.trim(), role: newRole });
       if (error) throw error;
       setNewName('');
       setNewPhone('');
+      setNewRole('general');
       await loadContacts();
     } catch (e) {
       console.error('Error adding contact:', e);
@@ -1279,6 +1511,19 @@ function ContactsPanel({ onClose }) {
     setTestingId(null);
   };
 
+  const handleRoleChange = async (contact, role) => {
+    try {
+      const { error } = await supabase
+        .from('notification_contacts')
+        .update({ role })
+        .eq('id', contact.id);
+      if (error) throw error;
+      await loadContacts();
+    } catch (e) {
+      console.error('Error changing role:', e);
+    }
+  };
+
   return (
     <div className="cal-modal-overlay" onClick={onClose}>
       <div className="cal-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
@@ -1320,11 +1565,27 @@ function ContactsPanel({ onClose }) {
                     {c.is_active ? '✅' : '⬜'}
                   </button>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: c.is_active ? '#1e293b' : '#94a3b8' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: c.is_active ? '#1e293b' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {c.name}
+                      <span style={{
+                        fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.35rem',
+                        borderRadius: '4px',
+                        background: ROLE_CONFIG[c.role || 'general']?.bg,
+                        color: ROLE_CONFIG[c.role || 'general']?.color,
+                      }}>{ROLE_CONFIG[c.role || 'general']?.label}</span>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#64748b' }}>
                       📞 {c.phone}
+                      <select
+                        value={c.role || 'general'}
+                        onChange={e => handleRoleChange(c, e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        style={{ fontSize: '0.7rem', padding: '0.1rem 0.25rem', borderRadius: '4px', border: '1px solid #e2e8f0', cursor: 'pointer' }}
+                      >
+                        <option value="general">General</option>
+                        <option value="cocina">Cocina</option>
+                        <option value="tys">TyS</option>
+                      </select>
                     </div>
                   </div>
                   <button
@@ -1365,22 +1626,36 @@ function ContactsPanel({ onClose }) {
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '0.75rem' }}>
               ➕ Agregar contacto
             </label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <input
                 type="text" value={newName} onChange={e => setNewName(e.target.value)}
                 placeholder="Nombre" style={{
-                  flex: 1, minWidth: '120px', padding: '0.5rem', borderRadius: '6px',
+                  flex: 1, minWidth: '100px', padding: '0.5rem', borderRadius: '6px',
                   border: '1px solid #e2e8f0', fontSize: '0.85rem'
                 }}
               />
               <input
                 type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)}
                 placeholder="543492XXXXXX" style={{
-                  flex: 1, minWidth: '140px', padding: '0.5rem', borderRadius: '6px',
+                  flex: 1, minWidth: '120px', padding: '0.5rem', borderRadius: '6px',
                   border: '1px solid #e2e8f0', fontSize: '0.85rem'
                 }}
                 onKeyDown={e => e.key === 'Enter' && handleAdd()}
               />
+              <select
+                value={newRole} onChange={e => setNewRole(e.target.value)}
+                style={{
+                  padding: '0.5rem', borderRadius: '6px',
+                  border: '1px solid #e2e8f0', fontSize: '0.85rem',
+                  background: ROLE_CONFIG[newRole]?.bg,
+                  color: ROLE_CONFIG[newRole]?.color,
+                  fontWeight: 600,
+                }}
+              >
+                <option value="general">🧹 General</option>
+                <option value="cocina">☕ Cocina</option>
+                <option value="tys">🖥️ TyS</option>
+              </select>
               <button
                 onClick={handleAdd} disabled={saving}
                 className="cal-btn cal-btn-primary"
