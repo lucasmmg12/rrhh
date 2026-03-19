@@ -920,7 +920,6 @@ body {
 .cal-recipients-section {
   border: 1px solid var(--cal-border);
   border-radius: var(--cal-radius-sm);
-  overflow: hidden;
   background: #f8fafc;
 }
 
@@ -942,13 +941,8 @@ body {
   border-top: 1px solid var(--cal-border);
   display: flex;
   flex-direction: column;
-  gap: 0;
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from { opacity: 0; max-height: 0; }
-  to { opacity: 1; max-height: 600px; }
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .cal-recipient-group {
