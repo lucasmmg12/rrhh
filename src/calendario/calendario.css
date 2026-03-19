@@ -1,29 +1,33 @@
 /* ============================================
    CALENDARIO SALA DE ATENEO — Design System
    Estética QOAG: Limpia, Clínica, Institucional
+   Alineada con Gestión de Calidad
    ============================================ */
 
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
 :root {
-  --cal-primary: #0369a1;
-  --cal-primary-light: #e0f2fe;
-  --cal-primary-dark: #075985;
-  --cal-accent: #0ea5e9;
-  --cal-bg: #f0f6ff;
+  --cal-primary: #1e6ca8;
+  --cal-primary-light: #e0f0ff;
+  --cal-primary-dark: #0e4d7a;
+  --cal-accent: #3b9fe0;
+  --cal-bg: linear-gradient(160deg, #e8f1fb 0%, #dfe9f5 40%, #f0f4fa 100%);
+  --cal-bg-flat: #e8f1fb;
   --cal-surface: #ffffff;
-  --cal-text: #0f172a;
-  --cal-text-secondary: #64748b;
-  --cal-border: #e2e8f0;
-  --cal-radius: 12px;
-  --cal-radius-sm: 8px;
-  --cal-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --cal-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.06);
-  --cal-shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.06);
-  --cal-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --cal-text: #1a2b4a;
+  --cal-text-secondary: #5a6b82;
+  --cal-border: #d8e2ef;
+  --cal-radius: 14px;
+  --cal-radius-sm: 10px;
+  --cal-shadow: 0 1px 4px rgba(30,108,168,0.06), 0 1px 2px rgba(0,0,0,0.03);
+  --cal-shadow-md: 0 4px 12px -2px rgba(30,108,168,0.10), 0 2px 4px rgba(0,0,0,0.04);
+  --cal-shadow-lg: 0 12px 32px -6px rgba(30,108,168,0.14), 0 8px 16px -8px rgba(0,0,0,0.06);
+  --cal-font: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   
   /* Event type colors */
-  --ev-meeting: #0284c7;
+  --ev-meeting: #1e6ca8;
   --ev-training: #7c3aed;
-  --ev-ateneo: #0ea5e9;
+  --ev-ateneo: #3b9fe0;
   --ev-holiday: #dc2626;
   --ev-block: #64748b;
   --ev-other: #10b981;
@@ -38,6 +42,7 @@
 body {
   font-family: var(--cal-font);
   background: var(--cal-bg);
+  background-color: var(--cal-bg-flat);
   color: var(--cal-text);
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;

@@ -1,9 +1,23 @@
 import { supabase } from '../../supabaseClient';
 
 // ============================================
-// CALENDAR SERVICE — Supabase CRUD (V2)
-// Features: Cancel Events, TyS, Smart Messaging
+// CALENDAR SERVICE — Supabase CRUD (V2.1)
+// Features: Cancel, TyS, Smart Messaging, Audit Log
 // ============================================
+
+// --- AUDIT LOG HELPER ---
+async function logAction(eventId, action, userEmail, details = {}) {
+  try {
+    await supabase.from('calendar_event_logs').insert({
+      event_id: eventId,
+      action,
+      user_email: userEmail || 'unknown',
+      details,
+    });
+  } catch (e) {
+    console.error('Audit log failed:', e);
+  }
+}
 
 export const calendarService = {
 
@@ -29,7 +43,7 @@ export const calendarService = {
     return data;
   },
 
-  async createEvent(event) {
+  async createEvent(event, userEmail) {
     const payload = {
       title: event.title,
       description: event.description || '',
@@ -47,6 +61,7 @@ export const calendarService = {
       recurrence_parent_id: event.recurrence_parent_id || null,
       links: event.links || [],
       status: 'active',
+      created_by: userEmail || null,
     };
 
     const { data, error } = await supabase
@@ -55,14 +70,15 @@ export const calendarService = {
       .select()
       .single();
     if (error) throw error;
+    await logAction(data.id, 'created', userEmail, { title: data.title });
     return data;
   },
 
-  async updateEvent(id, updates) {
+  async updateEvent(id, updates, userEmail) {
     const payload = { ...updates, updated_at: new Date().toISOString() };
-    // Remove fields that shouldn't be sent
     delete payload.id;
     delete payload.created_at;
+    delete payload.selectedContacts;
 
     const { data, error } = await supabase
       .from('calendar_events')
@@ -71,23 +87,25 @@ export const calendarService = {
       .select()
       .single();
     if (error) throw error;
+    await logAction(id, 'updated', userEmail, { title: data.title });
     return data;
   },
 
   // --- CANCEL EVENT (soft delete) ---
-  async cancelEvent(id) {
+  async cancelEvent(id, userEmail) {
     const { data, error } = await supabase
       .from('calendar_events')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .update({ status: 'cancelled', updated_at: new Date().toISOString(), cancelled_by: userEmail || null, cancelled_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();
     if (error) throw error;
+    await logAction(id, 'cancelled', userEmail, { title: data.title });
     return data;
   },
 
   // Cancel all events in a recurrence group
-  async cancelRecurrenceGroup(eventId) {
+  async cancelRecurrenceGroup(eventId, userEmail) {
     const { data: event, error: fetchError } = await supabase
       .from('calendar_events')
       .select('id, recurrence_parent_id')
@@ -96,23 +114,25 @@ export const calendarService = {
     if (fetchError) throw fetchError;
 
     const parentId = event.recurrence_parent_id || event.id;
+    const cancelPayload = { status: 'cancelled', updated_at: new Date().toISOString(), cancelled_by: userEmail || null, cancelled_at: new Date().toISOString() };
 
-    // Cancel all children
     const { error: childError } = await supabase
       .from('calendar_events')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .update(cancelPayload)
       .eq('recurrence_parent_id', parentId);
     if (childError) throw childError;
 
-    // Cancel the parent itself
     const { error: parentError } = await supabase
       .from('calendar_events')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .update(cancelPayload)
       .eq('id', parentId);
     if (parentError) throw parentError;
+
+    await logAction(parentId, 'cancelled_group', userEmail, { eventId });
   },
 
-  async deleteEvent(id) {
+  async deleteEvent(id, userEmail) {
+    await logAction(id, 'deleted', userEmail);
     const { error } = await supabase
       .from('calendar_events')
       .delete()

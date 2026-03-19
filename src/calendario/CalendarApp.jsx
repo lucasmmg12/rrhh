@@ -177,7 +177,7 @@ export default function CalendarApp({ isReadonly = false }) {
   // ===== EVENT CRUD =====
   const handleCreateEvent = async (eventData, pendingFiles = []) => {
     try {
-      const created = await calendarService.createEvent(eventData);
+      const created = await calendarService.createEvent(eventData, user?.email);
       if (eventData.is_recurring && eventData.recurrence_rule) {
         await calendarService.generateRecurringEvents(created);
       }
@@ -201,7 +201,7 @@ export default function CalendarApp({ isReadonly = false }) {
 
   const handleUpdateEvent = async (id, eventData) => {
     try {
-      const updated = await calendarService.updateEvent(id, eventData);
+      const updated = await calendarService.updateEvent(id, eventData, user?.email);
 
       // Handle recurrence changes on edit
       if (eventData.is_recurring && eventData.recurrence_rule) {
@@ -236,7 +236,7 @@ export default function CalendarApp({ isReadonly = false }) {
       if (deleteAll) {
         await calendarService.deleteRecurrenceGroup(id);
       } else {
-        await calendarService.deleteEvent(id);
+        await calendarService.deleteEvent(id, user?.email);
       }
       setModalState(null);
       await loadEvents();
@@ -249,9 +249,9 @@ export default function CalendarApp({ isReadonly = false }) {
   const handleCancelEvent = async (id, cancelAll = false) => {
     try {
       if (cancelAll) {
-        await calendarService.cancelRecurrenceGroup(id);
+        await calendarService.cancelRecurrenceGroup(id, user?.email);
       } else {
-        await calendarService.cancelEvent(id);
+        await calendarService.cancelEvent(id, user?.email);
       }
       setModalState(null);
       await loadEvents();
