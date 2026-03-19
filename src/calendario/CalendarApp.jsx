@@ -602,9 +602,11 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
 
   // Group contacts by role
   const contactsByRole = useMemo(() => ({
-    general: allContacts.filter(c => (c.role || 'general') === 'general' && c.is_active),
+    rrhh: allContacts.filter(c => c.role === 'rrhh' && c.is_active),
+    limpieza: allContacts.filter(c => c.role === 'limpieza' && c.is_active),
     cocina: allContacts.filter(c => c.role === 'cocina' && c.is_active),
     tys: allContacts.filter(c => c.role === 'tys' && c.is_active),
+    general: allContacts.filter(c => !c.role || c.role === 'general' && c.is_active),
   }), [allContacts]);
 
   const [form, setForm] = useState({
@@ -627,8 +629,8 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
 
   // Selected contact IDs for notification
   const [selectedContacts, setSelectedContacts] = useState(() => {
-    // Default: select all general contacts
-    return allContacts.filter(c => (c.role || 'general') === 'general' && c.is_active).map(c => c.id);
+    // Default: select all RRHH contacts
+    return allContacts.filter(c => c.role === 'rrhh' && c.is_active).map(c => c.id);
   });
   const [showRecipients, setShowRecipients] = useState(false);
 
@@ -1128,15 +1130,15 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
 
               {showRecipients && (
                 <div className="cal-recipients-body">
-                  {/* General / Limpieza group */}
-                  {contactsByRole.general.length > 0 && (
+                  {/* RRHH group */}
+                  {contactsByRole.rrhh.length > 0 && (
                     <div className="cal-recipient-group">
-                      <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('general')}>
-                        <input type="checkbox" readOnly checked={contactsByRole.general.every(c => selectedContacts.includes(c.id))} />
-                        <span>🧹 General / Limpieza ({contactsByRole.general.length})</span>
+                      <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('rrhh')}>
+                        <input type="checkbox" readOnly checked={contactsByRole.rrhh.every(c => selectedContacts.includes(c.id))} />
+                        <span>💼 RRHH ({contactsByRole.rrhh.length})</span>
                       </div>
                       <div className="cal-recipient-list">
-                        {contactsByRole.general.map(c => (
+                        {contactsByRole.rrhh.map(c => (
                           <label key={c.id} className="cal-recipient-item">
                             <input type="checkbox" checked={selectedContacts.includes(c.id)} onChange={() => toggleContact(c.id)} />
                             <span>{c.name}</span>
@@ -1146,6 +1148,29 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
                       </div>
                     </div>
                   )}
+
+                  {/* Aux Limpieza group */}
+                  <div className="cal-recipient-group">
+                    <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('limpieza')}>
+                      <input type="checkbox" readOnly checked={contactsByRole.limpieza.length > 0 && contactsByRole.limpieza.every(c => selectedContacts.includes(c.id))} />
+                      <span>🧹 Aux Limpieza ({contactsByRole.limpieza.length})</span>
+                    </div>
+                    {contactsByRole.limpieza.length > 0 ? (
+                      <div className="cal-recipient-list">
+                        {contactsByRole.limpieza.map(c => (
+                          <label key={c.id} className="cal-recipient-item">
+                            <input type="checkbox" checked={selectedContacts.includes(c.id)} onChange={() => toggleContact(c.id)} />
+                            <span>{c.name}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{c.phone}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        ⚠️ No hay contactos de Limpieza. Agregalos desde "Contactos WA".
+                      </div>
+                    )}
+                  </div>
 
                   {/* Cocina group */}
                   <div className="cal-recipient-group">
@@ -1194,6 +1219,25 @@ function EventModal({ mode, event, date, onClose, onCreate, onUpdate, onDelete, 
                       </div>
                     )}
                   </div>
+
+                  {/* General/sin categoría (legacy) */}
+                  {contactsByRole.general.length > 0 && (
+                    <div className="cal-recipient-group">
+                      <div className="cal-recipient-group-header" onClick={() => toggleRoleGroup('general')}>
+                        <input type="checkbox" readOnly checked={contactsByRole.general.every(c => selectedContacts.includes(c.id))} />
+                        <span>👤 Sin categoría ({contactsByRole.general.length})</span>
+                      </div>
+                      <div className="cal-recipient-list">
+                        {contactsByRole.general.map(c => (
+                          <label key={c.id} className="cal-recipient-item">
+                            <input type="checkbox" checked={selectedContacts.includes(c.id)} onChange={() => toggleContact(c.id)} />
+                            <span>{c.name}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{c.phone}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1430,15 +1474,17 @@ function ContactsPanel({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [newRole, setNewRole] = useState('general');
+  const [newRole, setNewRole] = useState('rrhh');
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState(null);
   const [testResult, setTestResult] = useState(null);
 
   const ROLE_CONFIG = {
-    general: { label: '🧹 General', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
+    rrhh: { label: '💼 RRHH', bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
+    limpieza: { label: '🧹 Aux Limpieza', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
     cocina: { label: '☕ Cocina', bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
     tys: { label: '🖥️ TyS', bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
+    general: { label: '👤 Sin cat.', bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' },
   };
 
   const loadContacts = async () => {
@@ -1586,7 +1632,8 @@ function ContactsPanel({ onClose }) {
                         onClick={e => e.stopPropagation()}
                         style={{ fontSize: '0.7rem', padding: '0.1rem 0.25rem', borderRadius: '4px', border: '1px solid #e2e8f0', cursor: 'pointer' }}
                       >
-                        <option value="general">General</option>
+                        <option value="rrhh">RRHH</option>
+                        <option value="limpieza">Aux Limpieza</option>
                         <option value="cocina">Cocina</option>
                         <option value="tys">TyS</option>
                       </select>
@@ -1656,7 +1703,8 @@ function ContactsPanel({ onClose }) {
                   fontWeight: 600,
                 }}
               >
-                <option value="general">🧹 General</option>
+                <option value="rrhh">💼 RRHH</option>
+                <option value="limpieza">🧹 Aux Limpieza</option>
                 <option value="cocina">☕ Cocina</option>
                 <option value="tys">🖥️ TyS</option>
               </select>
