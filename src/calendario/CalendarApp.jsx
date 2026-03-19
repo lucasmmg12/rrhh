@@ -145,7 +145,6 @@ export default function CalendarApp({ isReadonly = false }) {
       try {
         await calendarService.seedHolidays(holidays2026);
         await loadEvents();
-        if (isAdmin) await loadContacts();
       } catch (e) {
         console.error('Init error:', e);
       } finally {
@@ -154,6 +153,11 @@ export default function CalendarApp({ isReadonly = false }) {
     };
     init();
   }, []);
+
+  // Load contacts when admin auth resolves
+  useEffect(() => {
+    if (isAdmin) loadContacts();
+  }, [isAdmin, loadContacts]);
 
   useEffect(() => {
     if (!isLoading) loadEvents();
