@@ -5,6 +5,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { trackLogin, trackLogout } from '../lib/hubTracker';
 
 export default function AuthGate({ children, moduleName = 'Módulo' }) {
   const [user, setUser] = useState(null);
@@ -46,7 +47,7 @@ export default function AuthGate({ children, moduleName = 'Módulo' }) {
   // Authenticated — render children and provide signOut
   return (
     <>
-      {typeof children === 'function' ? children({ user, signOut: () => supabase.auth.signOut() }) : children}
+      {typeof children === 'function' ? children({ user, signOut: async () => { trackLogout(supabase, user.id); await supabase.auth.signOut(); } }) : children}
     </>
   );
 }
@@ -63,8 +64,10 @@ function LoginScreen({ moduleName }) {
     setError('');
     setLoading(true);
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) throw authError;
+      // Track in Hub Monitor
+      if (data?.user) trackLogin(supabase, data.user.id);
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión');
     }
