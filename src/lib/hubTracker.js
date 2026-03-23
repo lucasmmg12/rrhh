@@ -1,14 +1,14 @@
 /**
  * Hub Session Tracker — RRHH / Recursos Humanos
  * 
- * Usa un cliente Supabase dedicado al Hub (NO el de RRHH)
- * porque hub_logs_sesion vive en el proyecto Supabase del Hub.
+ * Usa RPC hub_log_external_event vía el cliente del Hub.
+ * Todos los sistemas externos usan RPC porque no tienen
+ * sesión autenticada en el Supabase del Hub (RLS bloquea inserts).
  */
 import { createClient } from '@supabase/supabase-js'
 
 const RRHH_SISTEMA_ID = '6046063c-f071-4b98-9646-920b34b748db'
 
-// Cliente dedicado al Hub
 const HUB_SUPABASE_URL = import.meta.env.VITE_HUB_SUPABASE_URL
 const HUB_SUPABASE_ANON_KEY = import.meta.env.VITE_HUB_SUPABASE_ANON_KEY
 
@@ -48,11 +48,15 @@ export async function trackLogin(supabase, userId) {
     if (!hub) return
 
     const [ip, geo] = await Promise.all([getPublicIP(), getGeo()])
-    await hub.from('hub_logs_sesion').insert({
-      user_id: userId, evento: 'login', sistema_id: RRHH_SISTEMA_ID,
-      ip_address: ip, user_agent: navigator.userAgent,
-      latitud: geo?.lat || null, longitud: geo?.lng || null,
-      metadata: { source: 'rrhh' },
+    await hub.rpc('hub_log_external_event', {
+      p_user_identifier: userId,
+      p_evento: 'login',
+      p_sistema_id: RRHH_SISTEMA_ID,
+      p_ip: ip,
+      p_user_agent: navigator.userAgent,
+      p_latitud: geo?.lat || null,
+      p_longitud: geo?.lng || null,
+      p_metadata: { source: 'rrhh' },
     })
   } catch (e) { console.warn('[HubTracker]', e) }
 }
@@ -62,9 +66,15 @@ export async function trackLogout(supabase, userId) {
     const hub = getHubClient()
     if (!hub) return
 
-    await hub.from('hub_logs_sesion').insert({
-      user_id: userId, evento: 'logout', sistema_id: RRHH_SISTEMA_ID,
-      user_agent: navigator.userAgent, metadata: { source: 'rrhh' },
+    await hub.rpc('hub_log_external_event', {
+      p_user_identifier: userId,
+      p_evento: 'logout',
+      p_sistema_id: RRHH_SISTEMA_ID,
+      p_ip: null,
+      p_user_agent: navigator.userAgent,
+      p_latitud: null,
+      p_longitud: null,
+      p_metadata: { source: 'rrhh' },
     })
   } catch (e) { console.warn('[HubTracker]', e) }
 }
