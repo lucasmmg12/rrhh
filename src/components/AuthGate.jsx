@@ -2,10 +2,23 @@
  * AuthGate — Componente de autenticación compartido
  * Requiere login con Supabase Auth antes de mostrar el contenido protegido.
  * Solo la Agenda Pública (/agenda.html) es accesible sin autenticación.
+ * 
+ * Exports: AuthGate (default), useAuth (named) — React Context hook
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, createContext } from 'react';
 import { supabase } from '../supabaseClient';
 import { trackLogin, trackLogout } from '../lib/hubTracker';
+
+// ─── AUTH CONTEXT ───────────────────────────────────────────────
+const AuthContext = createContext({ user: null, signOut: async () => {} });
+
+/**
+ * Hook to access user & signOut from any child component:
+ *   const { user, signOut } = useAuth();
+ */
+export function useAuth() {
+  return useContext(AuthContext);
+}
 
 export default function AuthGate({ children, moduleName = 'Módulo' }) {
   const [user, setUser] = useState(null);
@@ -21,6 +34,11 @@ export default function AuthGate({ children, moduleName = 'Módulo' }) {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleSignOut = async () => {
+    if (user) trackLogout(supabase, user.id);
+    await supabase.auth.signOut();
+  };
 
   if (loading) {
     return (
@@ -44,11 +62,15 @@ export default function AuthGate({ children, moduleName = 'Módulo' }) {
     return <LoginScreen moduleName={moduleName} />;
   }
 
-  // Authenticated — render children and provide signOut
+  // Authenticated — provide context to all children
+  const contextValue = { user, signOut: handleSignOut };
+
   return (
-    <>
-      {typeof children === 'function' ? children({ user, signOut: async () => { trackLogout(supabase, user.id); await supabase.auth.signOut(); } }) : children}
-    </>
+    <AuthContext.Provider value={contextValue}>
+      {typeof children === 'function'
+        ? children({ user, signOut: handleSignOut })
+        : children}
+    </AuthContext.Provider>
   );
 }
 

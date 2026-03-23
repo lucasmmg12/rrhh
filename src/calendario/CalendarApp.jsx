@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 import { calendarService } from './services/calendarService';
 import { sendTestMessage, notifySelectedContacts, notifyCancellation } from './services/whatsappService';
 import { holidays2026, recurringMeetings } from './data/holidays2026';
+import UserMenu from '../components/UserMenu';
+import { useAuth } from '../components/AuthGate';
 
 // ===== HELPERS =====
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -91,23 +93,10 @@ export default function CalendarApp({ isReadonly = false }) {
   const [attachments, setAttachments] = useState([]);
   const [allContacts, setAllContacts] = useState([]);
 
-  // ===== AUTH STATE =====
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(!isReadonly);
+  // ===== AUTH STATE (from AuthGate context when present) =====
+  const { user } = useAuth();
   const [showContactsPanel, setShowContactsPanel] = useState(false);
   const isAdmin = !isReadonly && !!user;
-
-  useEffect(() => {
-    if (isReadonly) return; // No auth needed for public page
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
-      setAuthLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
-    return () => subscription.unsubscribe();
-  }, [isReadonly]);
 
   // ===== DATA LOADING =====
   const loadEvents = useCallback(async () => {
@@ -283,19 +272,7 @@ export default function CalendarApp({ isReadonly = false }) {
   }, [currentDate, view]);
 
   // ===== RENDER =====
-  if (authLoading) {
-    return (
-      <div className="cal-loading">
-        <div className="cal-spinner"></div>
-        <p>Verificando acceso...</p>
-      </div>
-    );
-  }
-
-  // Show login for admin page when not authenticated
-  if (!isReadonly && !user) {
-    return <LoginScreen />;
-  }
+  // Auth is now handled by AuthGate wrapper — no need for internal login/loading screens
 
   if (isLoading) {
     return (
@@ -355,11 +332,7 @@ export default function CalendarApp({ isReadonly = false }) {
           <button className="cal-export-btn" onClick={handleExportPDF}>
             📄 Exportar PDF
           </button>
-          {isAdmin && (
-            <button className="cal-export-btn" onClick={async () => { await supabase.auth.signOut(); setUser(null); }} style={{ background: '#ef4444', borderColor: '#ef4444' }}>
-              Cerrar Sesión
-            </button>
-          )}
+          {isAdmin && <UserMenu />}
         </div>
       </header>
 

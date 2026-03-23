@@ -9,6 +9,7 @@ import { NewPositionDrawer } from './components/NewPositionDrawer';
 import { UnassignedNode } from './components/UnassignedNode';
 import ConfirmationModal from './components/ConfirmationModal';
 import { orgService } from './services/orgService';
+import UserMenu from './components/UserMenu';
 import {
   DndContext,
   DragOverlay,
@@ -679,6 +680,7 @@ function App() {
               textDecoration: 'none'
             }}>📋 Agenda Pública</a>
           </nav>
+          <UserMenu />
         </div>
 
         <div style={{ display: 'flex', gap: '1rem' }}>

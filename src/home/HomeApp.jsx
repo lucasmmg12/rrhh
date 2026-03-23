@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import UserMenu from '../components/UserMenu';
 
 const MODULES = [
   {
@@ -137,12 +138,7 @@ export default function HomeApp() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>{formatDate()}</span>
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'linear-gradient(135deg, #0284c7, #0369a1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: 700, fontSize: '0.8rem',
-          }}>SA</div>
+          <UserMenu />
         </div>
       </header>
 

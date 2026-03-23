@@ -10,6 +10,7 @@ import {
   eliminarImportacion,
 } from './fichadasService';
 import { exportToXLSX, exportToPDF, exportDetailedXLSX } from './exportService';
+import UserMenu from '../components/UserMenu';
 
 // ─── STYLES ──────────────────────────────────────────────────────
 const COLORS = {
@@ -311,6 +312,7 @@ export default function FichadasApp() {
           }}>
             🏠 Inicio
           </a>
+          <UserMenu />
         </div>
       </header>
 
