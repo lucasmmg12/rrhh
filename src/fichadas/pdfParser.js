@@ -49,10 +49,10 @@ const COL = {
  * recargo_min_horas: minimum worked hours to flag as recargo.
  */
 const NIGHT_RULES = [
-  { patterns: ['ENFERMERIA', 'NEONATOLOGIA', 'NEO', 'UTI', 'GUARDIA', 'TERAPIA'], noche_inicio: 21, noche_fin: 7, recargo_min_horas: 14 },
-  { patterns: ['RECEPCION', 'HOTELERIA', 'AUXILIAR', 'AUX'], noche_inicio: 23, noche_fin: 7, recargo_min_horas: 14 },
+  { patterns: ['ENFERMERIA', 'NEONATOLOGIA', 'NEO', 'UTI', 'GUARDIA', 'TERAPIA'], noche_inicio: 21, noche_fin: 7, recargo_min_horas: 12 },
+  { patterns: ['RECEPCION', 'HOTELERIA', 'AUXILIAR', 'AUX'], noche_inicio: 23, noche_fin: 7, recargo_min_horas: 12 },
 ];
-const DEFAULT_NIGHT_RULE = { noche_inicio: 23, noche_fin: 7, recargo_min_horas: 14 };
+const DEFAULT_NIGHT_RULE = { noche_inicio: 23, noche_fin: 7, recargo_min_horas: 12 };
 
 /**
  * Get night rule for a given area string
