@@ -153,6 +153,24 @@ export async function obtenerAreas() {
 
 // ─── REGISTROS ───────────────────────────────────────────────────
 export async function guardarRegistros(importacion_id, colaborador_id, registros) {
+  if (!registros.length) return;
+
+  // Extract the date range from records to clean up existing ones first
+  const fechas = registros.map(r => r.fecha).filter(Boolean).sort();
+  const fechaMin = fechas[0];
+  const fechaMax = fechas[fechas.length - 1];
+
+  // Delete existing records for this collaborator in this date range
+  // Prevents duplicates when re-importing or loading overlapping PDFs
+  if (fechaMin && fechaMax) {
+    await supabase
+      .from('fichadas_registros')
+      .delete()
+      .eq('colaborador_id', colaborador_id)
+      .gte('fecha', fechaMin)
+      .lte('fecha', fechaMax);
+  }
+
   const rows = registros.map(reg => ({
     importacion_id,
     colaborador_id,
