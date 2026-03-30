@@ -68,6 +68,22 @@ async function limpiarImportacionesPrevias(area, periodo_mes, periodo_anio) {
   }
 }
 
+/**
+ * Check if a collaborator already has monthly totals for a given period.
+ * Used by Smart Merge to detect existing sectoral data.
+ * @returns {{ area: string, importacion_id: string } | null}
+ */
+async function verificarTotalExistente(colaborador_id, periodo_mes, periodo_anio) {
+  const { data } = await supabase
+    .from('fichadas_totales_mensuales')
+    .select('area, importacion_id')
+    .eq('colaborador_id', colaborador_id)
+    .eq('periodo_mes', periodo_mes)
+    .eq('periodo_anio', periodo_anio)
+    .maybeSingle();
+  return data;
+}
+
 // ─── COLABORADORES ───────────────────────────────────────────────
 export async function upsertColaborador({ nombre_completo, area, sector, carga_horaria_default }) {
   // Try to find existing
@@ -265,10 +281,12 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
   emit({ type: 'import_created' });
 
   const resultados = [];
+  const omitidos = [];  // Smart Merge: collaborators skipped (have sectoral data)
+  const nuevos = [];    // Smart Merge: new collaborators without prior data
   let errores = 0;
   const total = parsedData.colaboradores.length;
 
-  // 2. Process each collaborator
+  // 2. Process each collaborator with Smart Merge
   for (let i = 0; i < parsedData.colaboradores.length; i++) {
     const colab = parsedData.colaboradores[i];
     emit({ type: 'colaborador_start', nombre: colab.nombre, index: i, total });
@@ -280,20 +298,71 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
         area: parsedData.area,
       });
 
+      // ─── SMART MERGE CHECK ──────────────────────────────
+      // Check if this collaborator already has totals for this period
+      // from a DIFFERENT area (sectoral data takes priority)
+      const existingTotal = await verificarTotalExistente(
+        colaborador_id, parsedData.mes, parsedData.anio
+      );
+
+      if (existingTotal && existingTotal.area && existingTotal.area !== parsedData.area) {
+        // Collaborator has sectoral data → SKIP (preserve their data)
+        omitidos.push({
+          nombre: colab.nombre,
+          colaborador_id,
+          area_existente: existingTotal.area,
+          area_pdf: parsedData.area,
+          registros: colab.registros.length,
+          totalHoras: colab.totales.horas_redondeadas_min,
+        });
+
+        emit({
+          type: 'colaborador_skip',
+          nombre: colab.nombre,
+          area_existente: existingTotal.area,
+        });
+        console.log(`  ⏭ ${colab.nombre}: Datos de ${existingTotal.area} preservados (omitido)`);
+        continue; // Skip — do NOT overwrite sectoral data
+      }
+      // ─── END SMART MERGE CHECK ──────────────────────────
+
+      // Track if this is a genuinely new collaborator (no prior data)
+      const esNuevo = !existingTotal;
+
       // Save daily records
       if (colab.registros.length > 0) {
         await guardarRegistros(importacion.id, colaborador_id, colab.registros);
       }
 
       // Save monthly totals
+      // For new collaborators in a "general" import, mark as SIN ASIGNAR
+      const areaParaTotales = esNuevo && omitidos.length > 0
+        ? 'SIN ASIGNAR'
+        : parsedData.area;
+
       await guardarTotalMensual(
         importacion.id,
         colaborador_id,
         colab.totales,
         parsedData.mes,
         parsedData.anio,
-        parsedData.area,
+        areaParaTotales,
       );
+
+      // If it's new AND we're in a general-like import, update collaborator area
+      if (esNuevo && omitidos.length > 0) {
+        await supabase
+          .from('fichadas_colaboradores')
+          .update({ area: 'SIN ASIGNAR' })
+          .eq('id', colaborador_id);
+
+        nuevos.push({
+          nombre: colab.nombre,
+          colaborador_id,
+          area_pdf: parsedData.area,
+          registros: colab.registros.length,
+        });
+      }
 
       resultados.push({
         nombre: colab.nombre,
@@ -301,10 +370,11 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
         registros: colab.registros.length,
         totalHoras: colab.totales.horas_redondeadas_min,
         diasTrabajados: colab.totales.dias_trabajados,
+        esNuevo,
       });
 
       emit({ type: 'colaborador_done', nombre: colab.nombre, registros: colab.registros.length, dias: colab.totales.dias_trabajados });
-      console.log(`  ✓ ${colab.nombre}: ${colab.registros.length} registros, ${colab.totales.dias_trabajados} días`);
+      console.log(`  ✓ ${colab.nombre}: ${colab.registros.length} registros, ${colab.totales.dias_trabajados} días${esNuevo ? ' (NUEVO)' : ''}`);
     } catch (err) {
       console.error(`  ✗ Error processing ${colab.nombre}:`, err.message);
       emit({ type: 'colaborador_error', nombre: colab.nombre, error: err.message });
@@ -312,14 +382,21 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
     }
   }
 
-  emit({ type: 'done', ok: resultados.length, errores });
-  console.log(`[Service] Done: ${resultados.length} OK, ${errores} errors`);
+  // Log merge summary
+  if (omitidos.length > 0) {
+    console.log(`[Service] Smart Merge: ${omitidos.length} omitidos (datos sectoriales preservados), ${nuevos.length} nuevos (SIN ASIGNAR)`);
+  }
+
+  emit({ type: 'done', ok: resultados.length, errores, omitidos: omitidos.length, nuevos: nuevos.length });
+  console.log(`[Service] Done: ${resultados.length} OK, ${omitidos.length} omitidos, ${nuevos.length} nuevos, ${errores} errors`);
 
   return {
     importacion_id: importacion.id,
     area: parsedData.area,
     periodo: `${parsedData.mes}/${parsedData.anio}`,
     resultados,
+    omitidos,
+    nuevos,
     errores,
   };
 }

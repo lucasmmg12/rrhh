@@ -64,6 +64,9 @@ export default function FichadasApp() {
   const [expandedColab, setExpandedColab] = useState(null);
   const [detailRecords, setDetailRecords] = useState([]);
 
+  // Smart Merge report
+  const [mergeReport, setMergeReport] = useState(null);
+
   const fileInputRef = useRef(null);
 
   // ─── LOAD DATA ─────────────────────────────────────────────────
@@ -111,6 +114,7 @@ export default function FichadasApp() {
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setMergeReport(null);
     setProgressLog([]);
     setProgressTotal(0);
     setProgressCurrent(0);
@@ -125,6 +129,8 @@ export default function FichadasApp() {
 
     let totalSuccess = 0;
     let fileErrors = 0;
+    let allOmitidos = [];
+    let allNuevos = [];
 
     for (let i = 0; i < validFiles.length; i++) {
       const file = validFiles[i];
@@ -154,6 +160,9 @@ export default function FichadasApp() {
             addLog(`⏳ ${event.nombre} (${event.index + 1}/${event.total})...`);
           } else if (event.type === 'colaborador_done') {
             addLog(`✓ ${event.nombre}: ${event.registros} registros`, 'success');
+          } else if (event.type === 'colaborador_skip') {
+            setProgressCurrent(prev => prev + 1);
+            addLog(`⏭ ${event.nombre}: Datos de ${event.area_existente} preservados (omitido)`, 'skip');
           } else if (event.type === 'colaborador_error') {
             addLog(`✗ Error en ${event.nombre}: ${event.error}`, 'error');
           }
@@ -161,6 +170,8 @@ export default function FichadasApp() {
 
         const result = await procesarYGuardarFichadas(parsed, file.name, onProgress);
         totalSuccess += result.resultados.length;
+        if (result.omitidos?.length) allOmitidos.push(...result.omitidos);
+        if (result.nuevos?.length) allNuevos.push(...result.nuevos);
         if (result.errores > 0) fileErrors += result.errores;
         
         // Update period filters from the last file
@@ -174,8 +185,17 @@ export default function FichadasApp() {
     }
 
     setFiltroArea('');
-    const summaryMsg = `✅ Lote procesado: ${totalSuccess} colaboradores exitosos. ${fileErrors > 0 ? `(${fileErrors} errores)` : ''}`;
+    const mergeInfo = allOmitidos.length > 0
+      ? ` | ⏭ ${allOmitidos.length} preservados (merge inteligente)` : '';
+    const nuevosInfo = allNuevos.length > 0
+      ? ` | 🆕 ${allNuevos.length} nuevos (SIN ASIGNAR)` : '';
+    const summaryMsg = `✅ Lote procesado: ${totalSuccess} colaboradores exitosos.${mergeInfo}${nuevosInfo} ${fileErrors > 0 ? `(${fileErrors} errores)` : ''}`;
     setSuccess(summaryMsg);
+
+    // Set merge report if there were skipped/new collaborators
+    if (allOmitidos.length > 0 || allNuevos.length > 0) {
+      setMergeReport({ omitidos: allOmitidos, nuevos: allNuevos });
+    }
 
     addLog('📊 Cargando dashboard...');
     await loadData();
@@ -338,6 +358,93 @@ export default function FichadasApp() {
         </div>
       )}
 
+      {/* SMART MERGE REPORT */}
+      {mergeReport && (
+        <div style={{ margin: '1rem 2rem 0', borderRadius: 12, border: '1px solid #fde68a',
+          background: '#fffbeb', overflow: 'hidden', animation: 'fadeIn 0.3s ease-out' }}>
+          <div style={{ padding: '0.75rem 1rem', background: '#fef3c7',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            borderBottom: '1px solid #fde68a' }}>
+            <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#92400e' }}>
+              🔀 Reporte de Merge Inteligente
+            </h4>
+            <button onClick={() => setMergeReport(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: '#92400e' }}>✕</button>
+          </div>
+          <div style={{ padding: '1rem' }}>
+            {/* Omitidos (preserved sectoral data) */}
+            {mergeReport.omitidos.length > 0 && (
+              <div style={{ marginBottom: mergeReport.nuevos.length > 0 ? '1rem' : 0 }}>
+                <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', fontWeight: 600, color: '#78350f' }}>
+                  ⏭ {mergeReport.omitidos.length} colaboradores preservados (ya tenían datos sectoriales):
+                </p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ background: '#fef3c7' }}>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left', fontWeight: 700, color: '#92400e',
+                        borderBottom: '1px solid #fde68a' }}>Colaborador</th>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 700, color: '#92400e',
+                        borderBottom: '1px solid #fde68a' }}>Área Existente</th>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 700, color: '#92400e',
+                        borderBottom: '1px solid #fde68a' }}>Área PDF</th>
+                      <th style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 700, color: '#92400e',
+                        borderBottom: '1px solid #fde68a' }}>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mergeReport.omitidos.map((o, idx) => (
+                      <tr key={idx} style={{ background: idx % 2 === 0 ? 'white' : '#fffbeb' }}>
+                        <td style={{ padding: '0.4rem 0.6rem', fontWeight: 600, borderBottom: '1px solid #fef3c7' }}>
+                          {o.nombre}
+                        </td>
+                        <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid #fef3c7' }}>
+                          <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '0.1rem 0.5rem',
+                            borderRadius: 6, fontSize: '0.72rem', fontWeight: 600 }}>
+                            {o.area_existente}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid #fef3c7' }}>
+                          <span style={{ background: '#f1f5f9', color: '#64748b', padding: '0.1rem 0.5rem',
+                            borderRadius: 6, fontSize: '0.72rem' }}>
+                            {o.area_pdf}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', borderBottom: '1px solid #fef3c7' }}>
+                          <span style={{ color: '#059669', fontWeight: 600, fontSize: '0.72rem' }}>✅ Preservado</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Nuevos (SIN ASIGNAR) */}
+            {mergeReport.nuevos.length > 0 && (
+              <div>
+                <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', fontWeight: 600, color: '#78350f' }}>
+                  🆕 {mergeReport.nuevos.length} colaboradores nuevos (asignados como SIN ASIGNAR):
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {mergeReport.nuevos.map((n, idx) => (
+                    <span key={idx} style={{
+                      background: '#fef2f2', color: '#991b1b', padding: '0.2rem 0.6rem',
+                      borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
+                      border: '1px solid #fecaca',
+                    }}>
+                      {n.nombre}
+                    </span>
+                  ))}
+                </div>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: '#92400e', fontStyle: 'italic' }}>
+                  Estos colaboradores necesitan asignación manual de sector.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* LOADING OVERLAY */}
       {loading && (
         <div style={{
@@ -395,6 +502,7 @@ export default function FichadasApp() {
                     color: entry.type === 'success' ? '#4ade80'
                          : entry.type === 'error' ? '#f87171'
                          : entry.type === 'warning' ? '#fbbf24'
+                         : entry.type === 'skip' ? '#fb923c'
                          : '#94a3b8',
                     animation: 'fadeIn 0.15s ease-out',
                   }}>
