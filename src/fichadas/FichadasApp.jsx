@@ -744,15 +744,14 @@ function DashboardView({
             </select>
           </div>
 
-          {/* Colaborador */}
-          <div>
+          {/* Colaborador — Buscador con autocompletado */}
+          <div style={{ position: 'relative' }}>
             <label style={{ fontSize: '0.75rem', color: COLORS.textMuted, display: 'block', marginBottom: 4, fontWeight: 600 }}>Colaborador</label>
-            <select value={filtroColaborador} onChange={e => setFiltroColaborador(e.target.value)} style={selectStyle}>
-              <option value="">Todos</option>
-              {colaboradores.map(c => (
-                <option key={c.id} value={c.id}>{c.nombre_completo}</option>
-              ))}
-            </select>
+            <CollaboratorSearch
+              colaboradores={colaboradores}
+              value={filtroColaborador}
+              onChange={setFiltroColaborador}
+            />
           </div>
         </div>
       </div>
@@ -963,6 +962,163 @@ function DashboardView({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── COLLABORATOR SEARCH (Autocomplete) ──────────────────────────
+function CollaboratorSearch({ colaboradores, value, onChange }) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef(null);
+
+  // Find the selected collaborator's name for display
+  const selectedName = value
+    ? colaboradores.find(c => c.id === value)?.nombre_completo || ''
+    : '';
+
+  // Filter collaborators based on query
+  const filtered = query.length > 0
+    ? colaboradores.filter(c =>
+        c.nombre_completo.toLowerCase().includes(query.toLowerCase())
+      )
+    : colaboradores;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelect = (colabId) => {
+    onChange(colabId);
+    setQuery('');
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    onChange('');
+    setQuery('');
+    setIsOpen(false);
+  };
+
+  const handleInputChange = (e) => {
+    setQuery(e.target.value);
+    setIsOpen(true);
+    if (value) onChange(''); // Clear selection when typing
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <span style={{
+          position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+          fontSize: '0.75rem', color: COLORS.textMuted, pointerEvents: 'none',
+        }}>🔍</span>
+        <input
+          type="text"
+          placeholder={value ? selectedName : 'Buscar colaborador...'}
+          value={query}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          style={{
+            ...selectStyle,
+            paddingLeft: '1.75rem',
+            paddingRight: value ? '1.75rem' : '0.5rem',
+            color: value && !query ? COLORS.primary : COLORS.text,
+            fontWeight: value && !query ? 600 : 400,
+          }}
+        />
+        {value && (
+          <button
+            onClick={handleClear}
+            style={{
+              position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '0.8rem', color: COLORS.textMuted, padding: '0 2px',
+              lineHeight: 1,
+            }}
+            title="Limpiar filtro"
+          >✕</button>
+        )}
+      </div>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+          background: 'white', border: `1px solid ${COLORS.border}`,
+          borderRadius: 8, marginTop: 4, maxHeight: 220, overflowY: 'auto',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+        }}>
+          {/* "Todos" option */}
+          <div
+            onClick={() => handleClear()}
+            style={{
+              padding: '0.45rem 0.65rem', cursor: 'pointer', fontSize: '0.8rem',
+              fontWeight: 600, color: COLORS.textMuted,
+              borderBottom: `1px solid ${COLORS.border}`,
+              background: !value ? COLORS.primaryLight : 'transparent',
+              transition: 'background 0.1s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = COLORS.primaryLight}
+            onMouseLeave={e => e.currentTarget.style.background = !value ? COLORS.primaryLight : 'transparent'}
+          >
+            Todos los colaboradores
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{
+              padding: '0.75rem', textAlign: 'center', fontSize: '0.78rem',
+              color: COLORS.textMuted, fontStyle: 'italic',
+            }}>
+              Sin resultados para "{query}"
+            </div>
+          ) : (
+            filtered.slice(0, 50).map(c => (
+              <div
+                key={c.id}
+                onClick={() => handleSelect(c.id)}
+                style={{
+                  padding: '0.4rem 0.65rem', cursor: 'pointer', fontSize: '0.8rem',
+                  color: COLORS.text, transition: 'background 0.1s',
+                  background: c.id === value ? COLORS.primaryLight : 'transparent',
+                  borderBottom: `1px solid ${COLORS.border}08`,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = COLORS.primaryLight}
+                onMouseLeave={e => e.currentTarget.style.background = c.id === value ? COLORS.primaryLight : 'transparent'}
+              >
+                <span style={{ fontWeight: c.id === value ? 600 : 400 }}>
+                  {c.nombre_completo}
+                </span>
+                {c.area && (
+                  <span style={{
+                    fontSize: '0.68rem', color: COLORS.primary, background: `${COLORS.primary}12`,
+                    padding: '0.1rem 0.35rem', borderRadius: 4, flexShrink: 0, marginLeft: 8,
+                  }}>
+                    {c.area}
+                  </span>
+                )}
+              </div>
+            ))
+          )}
+
+          {filtered.length > 50 && (
+            <div style={{
+              padding: '0.4rem', textAlign: 'center', fontSize: '0.72rem',
+              color: COLORS.textMuted, borderTop: `1px solid ${COLORS.border}`,
+            }}>
+              +{filtered.length - 50} más — escribí para filtrar
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
