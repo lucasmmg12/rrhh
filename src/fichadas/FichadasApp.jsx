@@ -101,9 +101,10 @@ export default function FichadasApp() {
   useEffect(() => { loadData(); }, [loadData]);
 
   // ─── PDF UPLOAD ────────────────────────────────────────────────
-  const handleFileUpload = async (file) => {
-    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-      setError('Por favor seleccioná un archivo PDF válido.');
+  const handleFilesUpload = async (files) => {
+    const validFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (!validFiles.length) {
+      setError('Por favor seleccioná al menos un archivo PDF válido.');
       return;
     }
 
@@ -122,75 +123,78 @@ export default function FichadasApp() {
       }, 50);
     };
 
-    try {
-      // 1. Parse PDF
-      addLog(`📄 Leyendo PDF: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
-      const parsed = await parseFichadasPDF(file);
+    let totalSuccess = 0;
+    let fileErrors = 0;
 
-      if (!parsed.colaboradores.length) {
-        addLog('❌ No se encontraron datos de colaboradores', 'error');
-        setError('No se encontraron datos de colaboradores en el PDF. Verificá el formato.');
-        setLoading(false);
-        return;
-      }
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      addLog(`\n--- Procesando archivo ${i + 1} de ${validFiles.length}: ${file.name} ---`, 'info');
+      
+      try {
+        // 1. Parse PDF
+        const parsed = await parseFichadasPDF(file);
 
-      addLog(`✅ PDF parseado: ${parsed.colaboradores.length} colaboradores, Área: ${parsed.area}, Período: ${parsed.mes}/${parsed.anio}`, 'success');
-      setProgressTotal(parsed.colaboradores.length);
-
-      // 2. Save to database with progress callback
-      const onProgress = (event) => {
-        if (event.type === 'cleaning') {
-          addLog(`🧹 Limpiando importaciones previas de ${event.area} ${event.periodo}...`);
-        } else if (event.type === 'import_created') {
-          addLog('📋 Registro de importación creado');
-        } else if (event.type === 'colaborador_start') {
-          setProgressCurrent(event.index + 1);
-          addLog(`⏳ Procesando ${event.nombre} (${event.index + 1}/${event.total})...`);
-        } else if (event.type === 'colaborador_done') {
-          addLog(`✓ ${event.nombre}: ${event.registros} registros, ${event.dias} días`, 'success');
-        } else if (event.type === 'colaborador_error') {
-          addLog(`✗ Error en ${event.nombre}: ${event.error}`, 'error');
-        } else if (event.type === 'done') {
-          addLog(`🎉 Importación completa: ${event.ok} exitosos, ${event.errores} errores`, event.errores > 0 ? 'warning' : 'success');
+        if (!parsed.colaboradores.length) {
+          addLog(`❌ Sin colaboradores en ${file.name}`, 'warning');
+          fileErrors++;
+          continue;
         }
-      };
 
-      const result = await procesarYGuardarFichadas(parsed, file.name, onProgress);
+        addLog(`✅ Parseado: ${parsed.colaboradores.length} colaboradores, Área: ${parsed.area}`, 'success');
+        setProgressTotal(prev => prev + parsed.colaboradores.length);
 
-      const totalRegs = result.resultados.reduce((a, r) => a + r.registros, 0);
-      const errMsg = result.errores > 0 ? ` (${result.errores} con advertencias)` : '';
-      setSuccess(
-        `✅ Importación exitosa: ${result.resultados.length} colaboradores procesados${errMsg}, ` +
-        `${totalRegs} registros — Área: ${result.area} — Período: ${result.periodo}`
-      );
+        // 2. Save to database
+        const onProgress = (event) => {
+          if (event.type === 'cleaning') {
+            addLog(`🧹 Limpiando importaciones previas de ${event.area} ${event.periodo}...`);
+          } else if (event.type === 'import_created') {
+            addLog('📋 Registro de importación creado');
+          } else if (event.type === 'colaborador_start') {
+            setProgressCurrent(prev => prev + 1);
+            addLog(`⏳ ${event.nombre} (${event.index + 1}/${event.total})...`);
+          } else if (event.type === 'colaborador_done') {
+            addLog(`✓ ${event.nombre}: ${event.registros} registros`, 'success');
+          } else if (event.type === 'colaborador_error') {
+            addLog(`✗ Error en ${event.nombre}: ${event.error}`, 'error');
+          }
+        };
 
-      // Update filters to match imported data
-      if (parsed.mes) setFiltroMes(parsed.mes);
-      if (parsed.anio) setFiltroAnio(parsed.anio);
-      setFiltroArea('');
-
-      addLog('📊 Cargando dashboard...');
-      await loadData();
-      setView('dashboard');
-    } catch (err) {
-      console.error('Upload error:', err);
-      addLog(`❌ Error fatal: ${err.message}`, 'error');
-      setError('Error al procesar el PDF: ' + err.message);
-    } finally {
-      setLoading(false);
+        const result = await procesarYGuardarFichadas(parsed, file.name, onProgress);
+        totalSuccess += result.resultados.length;
+        if (result.errores > 0) fileErrors += result.errores;
+        
+        // Update period filters from the last file
+        if (parsed.mes) setFiltroMes(parsed.mes);
+        if (parsed.anio) setFiltroAnio(parsed.anio);
+      } catch (err) {
+        console.error(`Upload error on ${file.name}:`, err);
+        addLog(`❌ Error fatal en ${file.name}: ${err.message}`, 'error');
+        fileErrors++;
+      }
     }
+
+    setFiltroArea('');
+    const summaryMsg = `✅ Lote procesado: ${totalSuccess} colaboradores exitosos. ${fileErrors > 0 ? `(${fileErrors} errores)` : ''}`;
+    setSuccess(summaryMsg);
+
+    addLog('📊 Cargando dashboard...');
+    await loadData();
+    setView('dashboard');
+    setLoading(false);
   };
 
   const onDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file) handleFileUpload(file);
+    if (e.dataTransfer?.files?.length) {
+      handleFilesUpload(e.dataTransfer.files);
+    }
   };
 
   const onFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (file) handleFileUpload(file);
+    if (e.target.files?.length) {
+      handleFilesUpload(e.target.files);
+    }
   };
 
   // ─── EXPAND DETAIL ────────────────────────────────────────────
@@ -505,15 +509,16 @@ function UploadView({ dragOver, setDragOver, onDrop, onFileSelect, fileInputRef,
           {dragOver ? '📥' : '📋'}
         </div>
         <p style={{ fontSize: '1rem', fontWeight: 600, color: COLORS.text, margin: '0 0 0.5rem 0' }}>
-          {dragOver ? 'Soltá el archivo aquí' : 'Arrastrá el PDF aquí o hacé clic para seleccionar'}
+          {dragOver ? 'Soltá los archivos aquí' : 'Arrastrá los PDFs aquí o hacé clic para seleccionar'}
         </p>
         <p style={{ fontSize: '0.8rem', color: COLORS.textMuted, margin: 0 }}>
-          Formato aceptado: PDF de Horas Totalizadas del sistema de fichadas
+          Formato aceptado: Múltiples PDFs de Horas Totalizadas del sistema de fichadas
         </p>
         <input
           ref={fileInputRef}
           type="file"
           accept=".pdf"
+          multiple
           onChange={onFileSelect}
           style={{ display: 'none' }}
         />
