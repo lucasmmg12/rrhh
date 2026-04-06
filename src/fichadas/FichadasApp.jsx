@@ -35,7 +35,7 @@ const MESES = [
 ];
 
 // ─── MAIN APP ────────────────────────────────────────────────────
-export default function FichadasApp() {
+export default function FichadasApp({ embedded = false }) {
   // State
   const [view, setView] = useState('upload'); // upload | dashboard
   const [loading, setLoading] = useState(false);
@@ -297,26 +297,62 @@ export default function FichadasApp() {
 
   // ─── RENDER ────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif", background: COLORS.bg, minHeight: '100vh' }}>
-      {/* HEADER */}
-      <header style={{
-        background: 'white', borderBottom: `1px solid ${COLORS.border}`,
-        padding: '0.75rem 2rem', display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', position: 'sticky', top: 0, zIndex: 100,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <a href="/" style={{ display: 'flex', alignItems: 'center' }}>
-            <img src="/logosanatorio.png" alt="SA" style={{ height: 32, objectFit: 'contain' }} />
-          </a>
-          <div>
-            <h1 style={{ fontSize: '1rem', fontWeight: 700, color: COLORS.text, margin: 0, lineHeight: 1.2 }}>
-              Control de Fichadas <span style={{ color: COLORS.primary }}>— Horas Totalizadas</span>
-            </h1>
-            <p style={{ fontSize: '0.7rem', color: COLORS.textMuted, margin: 0 }}>Sanatorio Argentino SRL</p>
+    <div style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif", background: embedded ? 'transparent' : COLORS.bg, minHeight: embedded ? 'auto' : '100vh' }}>
+      {/* STANDALONE HEADER — hidden when embedded */}
+      {!embedded && (
+        <header style={{
+          background: 'white', borderBottom: `1px solid ${COLORS.border}`,
+          padding: '0.75rem 2rem', display: 'flex', justifyContent: 'space-between',
+          alignItems: 'center', position: 'sticky', top: 0, zIndex: 100,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <a href="/" style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/logosanatorio.png" alt="SA" style={{ height: 32, objectFit: 'contain' }} />
+            </a>
+            <div>
+              <h1 style={{ fontSize: '1rem', fontWeight: 700, color: COLORS.text, margin: 0, lineHeight: 1.2 }}>
+                Control de Fichadas <span style={{ color: COLORS.primary }}>— Horas Totalizadas</span>
+              </h1>
+              <p style={{ fontSize: '0.7rem', color: COLORS.textMuted, margin: 0 }}>Sanatorio Argentino SRL</p>
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button onClick={() => setView('upload')} style={{
+              ...btnStyle, background: view === 'upload' ? COLORS.primary : 'transparent',
+              color: view === 'upload' ? 'white' : COLORS.textSecondary,
+              border: `1px solid ${view === 'upload' ? COLORS.primary : COLORS.border}`,
+            }}>
+              📄 Importar PDF
+            </button>
+            <button onClick={() => { setView('dashboard'); loadData(); }} style={{
+              ...btnStyle, background: view === 'dashboard' ? COLORS.primary : 'transparent',
+              color: view === 'dashboard' ? 'white' : COLORS.textSecondary,
+              border: `1px solid ${view === 'dashboard' ? COLORS.primary : COLORS.border}`,
+            }}>
+              📊 Dashboard
+            </button>
+            <a href="/" style={{
+              ...btnStyle, textDecoration: 'none',
+              background: 'transparent', color: COLORS.textSecondary,
+              border: `1px solid ${COLORS.border}`,
+            }}>
+              🏠 Inicio
+            </a>
+            <UserMenu />
+          </div>
+        </header>
+      )}
+
+      {/* EMBEDDED COMPACT TOOLBAR */}
+      {embedded && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          padding: '0.65rem 1.25rem',
+          background: 'white',
+          borderBottom: `1px solid ${COLORS.border}`,
+          gap: '0.5rem',
+        }}>
           <button onClick={() => setView('upload')} style={{
             ...btnStyle, background: view === 'upload' ? COLORS.primary : 'transparent',
             color: view === 'upload' ? 'white' : COLORS.textSecondary,
@@ -331,16 +367,8 @@ export default function FichadasApp() {
           }}>
             📊 Dashboard
           </button>
-          <a href="/" style={{
-            ...btnStyle, textDecoration: 'none',
-            background: 'transparent', color: COLORS.textSecondary,
-            border: `1px solid ${COLORS.border}`,
-          }}>
-            🏠 Inicio
-          </a>
-          <UserMenu />
         </div>
-      </header>
+      )}
 
       {/* ALERTS */}
       {error && (

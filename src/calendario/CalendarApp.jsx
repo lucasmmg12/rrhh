@@ -5,6 +5,7 @@ import { sendTestMessage, notifySelectedContacts, notifyCancellation } from './s
 import { holidays2026, recurringMeetings } from './data/holidays2026';
 import UserMenu from '../components/UserMenu';
 import { useAuth } from '../components/AuthGate';
+import './calendario.css';
 
 // ===== HELPERS =====
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -84,7 +85,7 @@ const getWeekDays = (date) => {
 };
 
 // ===== MAIN APP =====
-export default function CalendarApp({ isReadonly = false }) {
+export default function CalendarApp({ isReadonly = false, embedded = false }) {
   const [view, setView] = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState([]);
@@ -284,57 +285,94 @@ export default function CalendarApp({ isReadonly = false }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* HEADER */}
-      <header className="cal-header">
-        <div className="cal-header-left">
-          <img src="/logosanatorio.png" alt="Sanatorio Argentino" />
-          <h1>Agenda de Salas</h1>
-          <span className="cal-badge">{isAdmin ? 'ADMINISTRACIÓN' : 'AGENDA DIGITAL'}</span>
-          {isAdmin && (
-            <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.75rem' }}>
-              <a href="/" style={{
-                fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-                borderRadius: '12px', background: '#f1f5f9', color: '#475569',
-                textDecoration: 'none', transition: 'all 0.15s'
-              }}>🏠 Inicio</a>
-              <a href="/agenda.html" style={{
-                fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-                borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
-                textDecoration: 'none', transition: 'all 0.15s'
-              }}>📅 Agenda Pública</a>
-              <a href="/organigrama.html" style={{
-                fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-                borderRadius: '12px', background: '#f0fdf4', color: '#16a34a',
-                textDecoration: 'none', transition: 'all 0.15s'
-              }}>🏢 Organigrama</a>
-            </nav>
-          )}
-        </div>
-
-        <div className="cal-header-center">
-          <button className="cal-today-btn" onClick={goToday}>Hoy</button>
-          <button className="cal-nav-btn" onClick={goPrev}>‹</button>
-          <button className="cal-nav-btn" onClick={goNext}>›</button>
-          <span className="cal-month-label">{headerLabel}</span>
-        </div>
-
-        <div className="cal-header-right">
-          <div className="cal-view-toggle">
-            <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Mes</button>
-            <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Semana</button>
+    <div style={{ display: 'flex', flexDirection: 'column', height: embedded ? '100%' : '100vh' }}>
+      {/* STANDALONE HEADER — hidden when embedded */}
+      {!embedded && (
+        <header className="cal-header">
+          <div className="cal-header-left">
+            <img src="/logosanatorio.png" alt="Sanatorio Argentino" />
+            <h1>Agenda de Salas</h1>
+            <span className="cal-badge">{isAdmin ? 'ADMINISTRACIÓN' : 'AGENDA DIGITAL'}</span>
+            {isAdmin && (
+              <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.75rem' }}>
+                <a href="/" style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                  borderRadius: '12px', background: '#f1f5f9', color: '#475569',
+                  textDecoration: 'none', transition: 'all 0.15s'
+                }}>🏠 Inicio</a>
+                <a href="/agenda.html" style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                  borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
+                  textDecoration: 'none', transition: 'all 0.15s'
+                }}>📅 Agenda Pública</a>
+                <a href="/organigrama.html" style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                  borderRadius: '12px', background: '#f0fdf4', color: '#16a34a',
+                  textDecoration: 'none', transition: 'all 0.15s'
+                }}>🏢 Organigrama</a>
+              </nav>
+            )}
           </div>
-          {isAdmin && (
-            <button className="cal-export-btn" onClick={() => setShowContactsPanel(true)} style={{ background: '#10b981', borderColor: '#10b981' }}>
-              📱 Contactos WA
+
+          <div className="cal-header-center">
+            <button className="cal-today-btn" onClick={goToday}>Hoy</button>
+            <button className="cal-nav-btn" onClick={goPrev}>‹</button>
+            <button className="cal-nav-btn" onClick={goNext}>›</button>
+            <span className="cal-month-label">{headerLabel}</span>
+          </div>
+
+          <div className="cal-header-right">
+            <div className="cal-view-toggle">
+              <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Mes</button>
+              <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Semana</button>
+            </div>
+            {isAdmin && (
+              <button className="cal-export-btn" onClick={() => setShowContactsPanel(true)} style={{ background: '#10b981', borderColor: '#10b981' }}>
+                📱 Contactos WA
+              </button>
+            )}
+            <button className="cal-export-btn" onClick={handleExportPDF}>
+              📄 Exportar PDF
             </button>
-          )}
-          <button className="cal-export-btn" onClick={handleExportPDF}>
-            📄 Exportar PDF
-          </button>
-          {isAdmin && <UserMenu />}
+            {isAdmin && <UserMenu />}
+          </div>
+        </header>
+      )}
+
+      {/* EMBEDDED COMPACT TOOLBAR */}
+      {embedded && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0.65rem 1.25rem',
+          background: 'white',
+          borderBottom: '1px solid var(--neutral-200, #e2e8f0)',
+          flexWrap: 'wrap', gap: '0.5rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button className="cal-today-btn" onClick={goToday}>Hoy</button>
+            <button className="cal-nav-btn" onClick={goPrev}>‹</button>
+            <button className="cal-nav-btn" onClick={goNext}>›</button>
+            <span className="cal-month-label" style={{ fontSize: '1rem', fontWeight: 700 }}>{headerLabel}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="cal-view-toggle">
+              <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Mes</button>
+              <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Semana</button>
+            </div>
+            {isAdmin && (
+              <button className="cal-export-btn" onClick={() => setShowContactsPanel(true)}
+                style={{ background: '#10b981', borderColor: '#10b981', fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}>
+                📱 Contactos WA
+              </button>
+            )}
+            <button className="cal-export-btn" onClick={handleExportPDF}
+              style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}>
+              📄 Exportar PDF
+            </button>
+          </div>
         </div>
-      </header>
+      )}
 
       {/* CALENDAR BODY */}
       <div style={{ flex: 1, overflow: 'auto' }}>

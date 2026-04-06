@@ -238,14 +238,14 @@ export default function RRHHApp() {
           )}
 
           {activeView === 'calendario' && (
-            <div style={{ flex: 1, overflow: 'auto', padding: '1rem' }}>
-              <CalendarApp />
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <CalendarApp embedded />
             </div>
           )}
 
           {activeView === 'fichadas' && (
-            <div style={{ flex: 1, overflow: 'auto', padding: '1rem' }}>
-              <FichadasApp />
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <FichadasApp embedded />
             </div>
           )}
 
