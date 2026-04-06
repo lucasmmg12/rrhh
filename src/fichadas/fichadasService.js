@@ -182,21 +182,18 @@ export async function guardarRegistros(importacion_id, colaborador_id, registros
   const fechaMin = fechas[0];
   const fechaMax = fechas[fechas.length - 1];
 
-  // Delete existing records for this collaborator in this date range
-  // *** FIX: Only delete records from the SAME importacion ***
-  // This prevents general imports from wiping out sectoral records
+  // Delete ALL existing records for this collaborator in this date range.
+  // This aggressively prevents duplicates when re-importing.
+  // SAFETY: The Smart Merge in procesarYGuardarFichadas() is the gatekeeper —
+  // it ensures this function is NEVER called for collaborators with existing
+  // sectoral data during general imports. So this delete is always safe.
   if (fechaMin && fechaMax) {
     await supabase
       .from('fichadas_registros')
       .delete()
       .eq('colaborador_id', colaborador_id)
-      .eq('importacion_id', importacion_id)
       .gte('fecha', fechaMin)
       .lte('fecha', fechaMax);
-
-    // Also delete any orphaned records (from previous imports of the same source)
-    // that would cause true duplicates (same colaborador + same fecha + same importacion)
-    // We use a dedup approach: delete existing records from THIS import only
   }
 
   const rows = registros.map(reg => ({
