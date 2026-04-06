@@ -4,6 +4,28 @@
  */
 import { supabase } from '../supabaseClient';
 
+// ─── GENERAL IMPORT DETECTION ────────────────────────────────────
+// Keywords that indicate a PDF is a "general" company-wide import
+// (not sector-specific). General imports must NOT overwrite sectoral data.
+const GENERAL_AREA_KEYWORDS = [
+  'SANATORIO ARGENTINO',
+  'SANATORIO',
+  'GENERAL',
+  'TODOS',
+  'COMPLETO',
+];
+
+/**
+ * Detect if a parsed area string indicates a "general" (company-wide) import.
+ * General imports contain all employees across sectors and should not
+ * overwrite existing sectoral assignments.
+ */
+export function isGeneralImport(area) {
+  if (!area || area.trim() === '') return true; // No area = general
+  const upper = area.toUpperCase().trim();
+  return GENERAL_AREA_KEYWORDS.some(kw => upper.includes(kw));
+}
+
 // ─── IMPORTACIONES ───────────────────────────────────────────────
 export async function crearImportacion({ nombre_archivo, area, periodo_mes, periodo_anio, total_colaboradores, total_registros }) {
   const { data, error } = await supabase
@@ -161,14 +183,20 @@ export async function guardarRegistros(importacion_id, colaborador_id, registros
   const fechaMax = fechas[fechas.length - 1];
 
   // Delete existing records for this collaborator in this date range
-  // Prevents duplicates when re-importing or loading overlapping PDFs
+  // *** FIX: Only delete records from the SAME importacion ***
+  // This prevents general imports from wiping out sectoral records
   if (fechaMin && fechaMax) {
     await supabase
       .from('fichadas_registros')
       .delete()
       .eq('colaborador_id', colaborador_id)
+      .eq('importacion_id', importacion_id)
       .gte('fecha', fechaMin)
       .lte('fecha', fechaMax);
+
+    // Also delete any orphaned records (from previous imports of the same source)
+    // that would cause true duplicates (same colaborador + same fecha + same importacion)
+    // We use a dedup approach: delete existing records from THIS import only
   }
 
   const rows = registros.map(reg => ({
@@ -220,14 +248,30 @@ export async function obtenerRegistros(filtros = {}) {
 }
 
 // ─── TOTALES MENSUALES ───────────────────────────────────────────
-export async function guardarTotalMensual(importacion_id, colaborador_id, totales, periodo_mes, periodo_anio, area) {
-  // Delete any existing total for this collaborator+period first (avoids upsert conflict)
-  await supabase
+export async function guardarTotalMensual(importacion_id, colaborador_id, totales, periodo_mes, periodo_anio, area, esGeneralImport = false) {
+  // *** FIX: Check if a sectoral total already exists BEFORE deleting ***
+  const { data: existingTotal } = await supabase
     .from('fichadas_totales_mensuales')
-    .delete()
+    .select('id, area, importacion_id')
     .eq('colaborador_id', colaborador_id)
     .eq('periodo_mes', periodo_mes)
-    .eq('periodo_anio', periodo_anio);
+    .eq('periodo_anio', periodo_anio)
+    .maybeSingle();
+
+  // If this is a general import and the collaborator already has a total
+  // from a DIFFERENT (sectoral) import → DO NOT overwrite
+  if (esGeneralImport && existingTotal && existingTotal.importacion_id !== importacion_id) {
+    console.log(`  🛡 Total protegido para ${colaborador_id}: área "${existingTotal.area}" preservada (import ${existingTotal.importacion_id})`);
+    return; // Protect existing sectoral data
+  }
+
+  // Delete any existing total for this collaborator+period first (avoids upsert conflict)
+  if (existingTotal) {
+    await supabase
+      .from('fichadas_totales_mensuales')
+      .delete()
+      .eq('id', existingTotal.id);
+  }
 
   const { error } = await supabase
     .from('fichadas_totales_mensuales')
@@ -279,12 +323,18 @@ export async function obtenerTotalesMensuales(filtros = {}) {
 export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProgress) {
   const emit = (event) => { if (onProgress) onProgress(event); };
 
-  console.log(`[Service] Processing ${parsedData.colaboradores.length} collaborators for ${parsedData.area} ${parsedData.mes}/${parsedData.anio}`);
+  const esGeneral = isGeneralImport(parsedData.area);
+  console.log(`[Service] Processing ${parsedData.colaboradores.length} collaborators for ${parsedData.area} ${parsedData.mes}/${parsedData.anio} (${esGeneral ? 'GENERAL' : 'SECTORAL'})`);
 
   // 0. Clean previous imports for same area+period
-  if (parsedData.area && parsedData.mes && parsedData.anio) {
+  // *** FIX: NEVER clean previous imports for general/company-wide PDFs ***
+  // General imports should only ADD data for collaborators without existing sectoral data
+  if (!esGeneral && parsedData.area && parsedData.mes && parsedData.anio) {
     emit({ type: 'cleaning', area: parsedData.area, periodo: `${parsedData.mes}/${parsedData.anio}` });
     await limpiarImportacionesPrevias(parsedData.area, parsedData.mes, parsedData.anio);
+  } else if (esGeneral) {
+    emit({ type: 'cleaning', area: parsedData.area, periodo: `${parsedData.mes}/${parsedData.anio}` });
+    console.log(`[Service] ⚠ Import GENERAL detectado — NO se limpian importaciones previas. Smart Merge protegerá datos sectoriales.`);
   }
 
   // 1. Create importation record
@@ -310,25 +360,30 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
     emit({ type: 'colaborador_start', nombre: colab.nombre, index: i, total });
 
     try {
-      // Upsert collaborator
+      // Upsert collaborator — for general imports, do NOT update the area field
       const colaborador_id = await upsertColaborador({
         nombre_completo: colab.nombre,
-        area: parsedData.area,
+        area: esGeneral ? null : parsedData.area,  // *** FIX: Don't overwrite area from general import ***
       });
 
       // ─── SMART MERGE CHECK ──────────────────────────────
       // Check if this collaborator already has totals for this period
-      // from a DIFFERENT area (sectoral data takes priority)
       const existingTotal = await verificarTotalExistente(
         colaborador_id, parsedData.mes, parsedData.anio
       );
 
-      if (existingTotal && existingTotal.area && existingTotal.area !== parsedData.area) {
-        // Collaborator has sectoral data → SKIP (preserve their data)
+      // *** FIX: For general imports, skip ANY collaborator that already has data ***
+      // (regardless of whether the area matches or not)
+      // For sectoral imports, skip only if the existing data is from a different area
+      const shouldSkip = esGeneral
+        ? (existingTotal != null)  // General: skip if ANY existing data
+        : (existingTotal && existingTotal.area && existingTotal.area !== parsedData.area);  // Sectoral: skip if different area
+
+      if (shouldSkip) {
         omitidos.push({
           nombre: colab.nombre,
           colaborador_id,
-          area_existente: existingTotal.area,
+          area_existente: existingTotal?.area || '(sin área)',
           area_pdf: parsedData.area,
           registros: colab.registros.length,
           totalHoras: colab.totales.horas_redondeadas_min,
@@ -337,10 +392,10 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
         emit({
           type: 'colaborador_skip',
           nombre: colab.nombre,
-          area_existente: existingTotal.area,
+          area_existente: existingTotal?.area || '(sin área)',
         });
-        console.log(`  ⏭ ${colab.nombre}: Datos de ${existingTotal.area} preservados (omitido)`);
-        continue; // Skip — do NOT overwrite sectoral data
+        console.log(`  ⏭ ${colab.nombre}: Datos de "${existingTotal?.area}" preservados (omitido)`);
+        continue; // Skip — do NOT overwrite existing data
       }
       // ─── END SMART MERGE CHECK ──────────────────────────
 
@@ -353,10 +408,10 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
       }
 
       // Save monthly totals
-      // For new collaborators in a "general" import, mark as SIN ASIGNAR
-      const areaParaTotales = esNuevo && omitidos.length > 0
+      // For new collaborators in a general import, mark as SIN ASIGNAR
+      const areaParaTotales = esGeneral && esNuevo
         ? 'SIN ASIGNAR'
-        : parsedData.area;
+        : (esGeneral ? parsedData.area : parsedData.area);
 
       await guardarTotalMensual(
         importacion.id,
@@ -365,10 +420,11 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
         parsedData.mes,
         parsedData.anio,
         areaParaTotales,
+        esGeneral,  // *** FIX: Pass general flag so guardarTotalMensual can protect existing data ***
       );
 
-      // If it's new AND we're in a general-like import, update collaborator area
-      if (esNuevo && omitidos.length > 0) {
+      // If it's new AND we're in a general import, update collaborator area
+      if (esNuevo && esGeneral) {
         await supabase
           .from('fichadas_colaboradores')
           .update({ area: 'SIN ASIGNAR' })
@@ -402,7 +458,7 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
 
   // Log merge summary
   if (omitidos.length > 0) {
-    console.log(`[Service] Smart Merge: ${omitidos.length} omitidos (datos sectoriales preservados), ${nuevos.length} nuevos (SIN ASIGNAR)`);
+    console.log(`[Service] Smart Merge: ${omitidos.length} omitidos (datos preservados), ${nuevos.length} nuevos (SIN ASIGNAR)`);
   }
 
   emit({ type: 'done', ok: resultados.length, errores, omitidos: omitidos.length, nuevos: nuevos.length });
@@ -416,5 +472,6 @@ export async function procesarYGuardarFichadas(parsedData, nombreArchivo, onProg
     omitidos,
     nuevos,
     errores,
+    esGeneral,
   };
 }

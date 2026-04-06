@@ -152,7 +152,9 @@ export default function FichadasApp() {
         // 2. Save to database
         const onProgress = (event) => {
           if (event.type === 'cleaning') {
-            addLog(`🧹 Limpiando importaciones previas de ${event.area} ${event.periodo}...`);
+            addLog(`🧹 Preparando importación para ${event.area} ${event.periodo}...`);
+          } else if (event.type === 'general_detected') {
+            addLog(`⚠️ IMPORT GENERAL detectado — datos sectoriales serán protegidos`, 'warning');
           } else if (event.type === 'import_created') {
             addLog('📋 Registro de importación creado');
           } else if (event.type === 'colaborador_start') {
