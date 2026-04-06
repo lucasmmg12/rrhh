@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import './auditoria.css';
 import {
   SECTORES,
   CHECKLIST_TEMPLATE,
@@ -15,7 +16,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
-export default function AuditoriaApp() {
+export default function AuditoriaApp(props) {
   const [view, setView] = useState('home'); // home | new | detail
   const [selectedAudit, setSelectedAudit] = useState(null);
 
@@ -36,26 +37,59 @@ export default function AuditoriaApp() {
 
   return (
     <div className="aud-app">
-      {/* HEADER */}
-      <header className="aud-header">
-        {view !== 'home' && (
+      {/* HEADER — Only show when standalone (not embedded in hub) */}
+      {!props.embedded && (
+        <header className="aud-header">
+          {view !== 'home' && (
+            <button className="aud-header-btn" onClick={handleBack}>
+              ← Volver
+            </button>
+          )}
+          <img src="/logosanatorio.png" alt="SA" />
+          <div className="aud-header-text">
+            <h1>Auditoría en Terreno</h1>
+            <span>Sede Santa Fe</span>
+          </div>
+          {view === 'home' && (
+            <div className="aud-header-actions">
+              <button className="aud-header-btn primary" onClick={handleNewAudit}>
+                ✚ Nueva
+              </button>
+            </div>
+          )}
+        </header>
+      )}
+
+      {/* Embedded sub-nav bar */}
+      {props.embedded && view !== 'home' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--neutral-200, #E2E8F0)',
+          background: 'white',
+        }}>
           <button className="aud-header-btn" onClick={handleBack}>
             ← Volver
           </button>
-        )}
-        <img src="/logosanatorio.png" alt="SA" />
-        <div className="aud-header-text">
-          <h1>Auditoría en Terreno</h1>
-          <span>Sede Santa Fe</span>
         </div>
-        {view === 'home' && (
-          <div className="aud-header-actions">
-            <button className="aud-header-btn primary" onClick={handleNewAudit}>
-              ✚ Nueva
-            </button>
-          </div>
-        )}
-      </header>
+      )}
+
+      {/* Embedded top actions */}
+      {props.embedded && view === 'home' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--neutral-200, #E2E8F0)',
+          background: 'white',
+        }}>
+          <button className="aud-header-btn primary" onClick={handleNewAudit}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '8px',
+              background: 'var(--primary-500, #1E5FA6)', color: 'white',
+              fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+            }}>
+            ✚ Nueva Auditoría
+          </button>
+        </div>
+      )}
 
       {/* BODY */}
       {view === 'home' && <HomeView onNew={handleNewAudit} onView={handleViewAudit} />}

@@ -219,7 +219,7 @@ const DeptListChildren = ({ node, onSelect }) => {
 };
 
 
-function App() {
+function App({ embedded = false }) {
   // Use local state instead of hook for now
   const [data, setData] = useState(null); // Init as null, load from DB
   const [isLoading, setIsLoading] = useState(true);
@@ -653,8 +653,8 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Header Controls */}
-      <header className="org-controls">
+      {/* Header Controls — hidden when embedded in hub */}
+      {!embedded && <header className="org-controls">
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ height: '36px', objectFit: 'contain' }} />
           <h1 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700, color: 'var(--color-primary)' }}>
@@ -779,7 +779,7 @@ function App() {
             }}
           />
         </div>
-      </header>
+      </header>}
 
       {/* Main Content Area */}
       <div className="org-container">

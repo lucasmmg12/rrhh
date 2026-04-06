@@ -1,6 +1,5 @@
 import { useState, useCallback, lazy, Suspense } from 'react';
 import Sidebar from './components/Sidebar.jsx';
-import { Clock } from 'lucide-react';
 
 // Lazy load heavy modules for performance
 const OrganigramaApp = lazy(() => import('./App.jsx'));
@@ -234,7 +233,7 @@ export default function RRHHApp() {
 
           {activeView === 'organigrama' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <OrganigramaApp />
+              <OrganigramaApp embedded />
             </div>
           )}
 
@@ -252,7 +251,7 @@ export default function RRHHApp() {
 
           {activeView === 'auditoria' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <AuditoriaApp />
+              <AuditoriaApp embedded />
             </div>
           )}
 
