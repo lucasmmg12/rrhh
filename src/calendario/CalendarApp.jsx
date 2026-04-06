@@ -360,6 +360,15 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
               <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Mes</button>
               <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Semana</button>
             </div>
+            <a href="/agenda.html" target="_blank" rel="noopener noreferrer"
+              className="cal-export-btn"
+              style={{
+                fontSize: '0.75rem', padding: '0.35rem 0.65rem',
+                textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                background: '#0284c7', borderColor: '#0284c7', color: 'white',
+              }}>
+              📅 Agenda Pública
+            </a>
             {isAdmin && (
               <button className="cal-export-btn" onClick={() => setShowContactsPanel(true)}
                 style={{ background: '#10b981', borderColor: '#10b981', fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}>
