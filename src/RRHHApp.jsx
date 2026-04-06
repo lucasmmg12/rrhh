@@ -6,6 +6,7 @@ const OrganigramaApp = lazy(() => import('./App.jsx'));
 const CalendarApp = lazy(() => import('./calendario/CalendarApp.jsx'));
 const FichadasApp = lazy(() => import('./fichadas/FichadasApp.jsx'));
 const AuditoriaApp = lazy(() => import('./auditoria/AuditoriaApp.jsx'));
+const EfemeridesApp = lazy(() => import('./efemerides/EfemeridesApp.jsx'));
 
 // Loading spinner
 function LoadingSpinner({ label = 'Cargando módulo...' }) {
@@ -256,7 +257,9 @@ export default function RRHHApp() {
           )}
 
           {activeView === 'efemerides' && (
-            <PlaceholderPanel title="Efemérides" icon="🎂" />
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <EfemeridesApp embedded />
+            </div>
           )}
 
           {activeView === 'config' && (
