@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import './auditoria.css';
+import { useAuth } from '../components/AuthGate';
+
+// Map known user emails to readable auditor names
+const USER_DISPLAY_NAMES = {
+  'mjameson@sanatorioargentino.com': 'M. Jameson',
+  'rmarun@sanatorioargentino.com': 'R. Marún',
+  'lpetit@sanatorioargentino.com': 'L. Petit',
+};
+
+function getAuditorName(user) {
+  if (!user) return '';
+  const email = user.email?.toLowerCase();
+  if (USER_DISPLAY_NAMES[email]) return USER_DISPLAY_NAMES[email];
+  // Fallback: use part before @ capitalized
+  const localPart = email?.split('@')[0] || '';
+  return localPart.charAt(0).toUpperCase() + localPart.slice(1);
+}
 import {
   SECTORES,
   CHECKLIST_TEMPLATE,
@@ -17,6 +34,7 @@ import {
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 export default function AuditoriaApp(props) {
+  const { user } = useAuth();
   const [view, setView] = useState('home'); // home | new | detail
   const [selectedAudit, setSelectedAudit] = useState(null);
 
@@ -93,7 +111,7 @@ export default function AuditoriaApp(props) {
 
       {/* BODY */}
       {view === 'home' && <HomeView onNew={handleNewAudit} onView={handleViewAudit} />}
-      {view === 'new' && <NewAuditView onSaved={handleBack} />}
+      {view === 'new' && <NewAuditView onSaved={handleBack} currentUser={user} />}
       {view === 'detail' && selectedAudit && <DetailView audit={selectedAudit} />}
     </div>
   );
@@ -194,7 +212,7 @@ function HomeView({ onNew, onView }) {
 // ═══════════════════════════════════════════════════════════════
 // NEW AUDIT VIEW — 6-step wizard
 // ═══════════════════════════════════════════════════════════════
-function NewAuditView({ onSaved }) {
+function NewAuditView({ onSaved, currentUser }) {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -206,7 +224,7 @@ function NewAuditView({ onSaved }) {
     sede: 'Santa Fe',
     sector: '',
     responsable_presente: '',
-    auditor_nombre: '',
+    auditor_nombre: getAuditorName(currentUser),
   });
 
   // Section 2: Checklist items
@@ -511,13 +529,13 @@ function StepDatosGenerales({ general, setGeneral, colaboradores }) {
         </div>
 
         <div className="aud-field">
-          <label className="aud-label">Auditor / Evaluador *</label>
+          <label className="aud-label">Auditor / Evaluador</label>
           <input
             type="text"
             className="aud-input"
-            placeholder="Tu nombre"
             value={general.auditor_nombre}
-            onChange={e => update('auditor_nombre', e.target.value)}
+            readOnly
+            style={{ background: '#f1f5f9', cursor: 'default', fontWeight: 600 }}
           />
         </div>
       </div>
