@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS rrhh_efemerides (
   recurrente BOOLEAN DEFAULT false,           -- ¿Se repite cada año?
   colaborador_id UUID REFERENCES fichadas_colaboradores(id) ON DELETE SET NULL,
   sector TEXT,                                 -- Sector afectado (null = todos)
-  genero_filtro TEXT CHECK (genero_filtro IN ('M', 'F', NULL)),  -- Para obsequios
+  genero_filtro TEXT CHECK (genero_filtro IS NULL OR genero_filtro IN ('M', 'F')),  -- Para obsequios
   color TEXT DEFAULT '#0284c7',               -- Color visual en el calendario
   icono TEXT DEFAULT '🎂',                    -- Emoji representativo
   notificar_whatsapp BOOLEAN DEFAULT false,   -- ¿Enviar notificación WA?
