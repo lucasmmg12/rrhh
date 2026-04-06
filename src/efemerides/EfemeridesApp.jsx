@@ -208,7 +208,7 @@ export default function EfemeridesApp({ embedded = false }) {
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           lineHeight: 1.4,
                         }}>
-                          {cfg.icon} {ev.titulo}
+                          {ev.icono || cfg.icon} {ev.titulo}{ev.obsequio ? ' 🎁' : ''}
                         </div>
                       );
                     })}
@@ -270,6 +270,13 @@ export default function EfemeridesApp({ embedded = false }) {
                             background: cfg.color + '15', color: cfg.color, fontWeight: 600,
                             display: 'inline-block', marginTop: '0.25rem',
                           }}>{cfg.label}</span>
+                          {ev.obsequio && (
+                            <span style={{
+                              fontSize: '0.6rem', padding: '1px 6px', borderRadius: '8px',
+                              background: '#fef3c7', color: '#92400e', fontWeight: 600,
+                              display: 'inline-block', marginTop: '0.25rem', marginLeft: '0.25rem',
+                            }}>🎁 Obsequio</span>
+                          )}
                         </div>
                         <button onClick={() => handleDelete(ev.id)} style={{
                           border: 'none', background: 'none', cursor: 'pointer',
@@ -381,6 +388,7 @@ function CreateModal({ date, onClose, onCreate }) {
     fecha: date,
     tipo: 'institucional',
     recurrente: false,
+    obsequio: false,
     color: '#7c3aed',
     icono: '📌',
     notificar_whatsapp: false,
@@ -446,6 +454,10 @@ function CreateModal({ date, onClose, onCreate }) {
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.recurrente} onChange={e => update('recurrente', e.target.checked)} />
               Se repite cada año
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.obsequio} onChange={e => update('obsequio', e.target.checked)} />
+              🎁 Obsequio
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.notificar_whatsapp} onChange={e => update('notificar_whatsapp', e.target.checked)} />
