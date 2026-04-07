@@ -9,6 +9,13 @@ import {
   deleteAdjunto,
   getSignedDownloadUrl,
   getAdjuntoUrl,
+  obtenerColaboradores,
+  obtenerSectores,
+  getDestinatarios,
+  agregarDestinatarios,
+  agregarSector,
+  eliminarDestinatario,
+  toggleObsequioEntregado,
 } from './efemeridesService';
 
 // ─── CONSTANTS ───
@@ -95,7 +102,7 @@ export default function EfemeridesApp({ embedded = false }) {
   }, [efemerides, filter]);
 
   // ─── CREATE EFEMERIDE ───
-  const handleCreate = async (data, pendingFiles = []) => {
+  const handleCreate = async (data, pendingFiles = [], pendingDestinatarioIds = []) => {
     try {
       const created = await crearEfemeride(data);
       // Upload pending files after creation
@@ -104,6 +111,14 @@ export default function EfemeridesApp({ embedded = false }) {
           await uploadAdjunto(created.id, file);
         } catch (err) {
           console.error('Failed to upload attachment:', file.name, err);
+        }
+      }
+      // Add pending destinatarios
+      if (pendingDestinatarioIds.length > 0) {
+        try {
+          await agregarDestinatarios(created.id, pendingDestinatarioIds);
+        } catch (err) {
+          console.error('Failed to add destinatarios:', err);
         }
       }
       setShowForm(false);
@@ -344,23 +359,42 @@ export default function EfemeridesApp({ embedded = false }) {
   );
 }
 
-// ─── SELECTED DAY PANEL (with attachments) ───
+// ─── SELECTED DAY PANEL (with attachments + destinatarios) ───
 function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
   const [attachmentsMap, setAttachmentsMap] = useState({});
+  const [destinatariosMap, setDestinatariosMap] = useState({});
   const [uploading, setUploading] = useState(null);
+  const [expandedDest, setExpandedDest] = useState({});
+  const [addingDest, setAddingDest] = useState(null); // efemeride id being edited
+  const [allColaboradores, setAllColaboradores] = useState([]);
+  const [allSectores, setAllSectores] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Load attachments for visible events
+  // Load attachments + destinatarios for visible events
   useEffect(() => {
     if (events.length === 0) return;
     const loadAll = async () => {
-      const map = {};
+      const attMap = {};
+      const destMap = {};
       for (const ev of events) {
-        try { map[ev.id] = await getAdjuntos(ev.id); } catch { map[ev.id] = []; }
+        try { attMap[ev.id] = await getAdjuntos(ev.id); } catch { attMap[ev.id] = []; }
+        try { destMap[ev.id] = await getDestinatarios(ev.id); } catch { destMap[ev.id] = []; }
       }
-      setAttachmentsMap(map);
+      setAttachmentsMap(attMap);
+      setDestinatariosMap(destMap);
     };
     loadAll();
   }, [events]);
+
+  // Load colaboradores when adding mode opens
+  useEffect(() => {
+    if (addingDest) {
+      Promise.all([obtenerColaboradores(), obtenerSectores()]).then(([c, s]) => {
+        setAllColaboradores(c);
+        setAllSectores(s);
+      });
+    }
+  }, [addingDest]);
 
   const handleUpload = async (evId, e) => {
     const files = Array.from(e.target.files);
@@ -396,6 +430,60 @@ function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
     }
   };
 
+  // ─── Destinatarios handlers ───
+  const handleAddPersona = async (evId, colabId) => {
+    try {
+      const added = await agregarDestinatarios(evId, [colabId]);
+      setDestinatariosMap(prev => {
+        const existing = prev[evId] || [];
+        const existingIds = existing.map(d => d.colaborador_id);
+        const newOnes = added.filter(a => !existingIds.includes(a.colaborador_id));
+        return { ...prev, [evId]: [...existing, ...newOnes] };
+      });
+    } catch (err) {
+      alert('Error al agregar: ' + err.message);
+    }
+  };
+
+  const handleAddSector = async (evId, area) => {
+    try {
+      const added = await agregarSector(evId, area);
+      setDestinatariosMap(prev => {
+        const existing = prev[evId] || [];
+        const existingIds = existing.map(d => d.colaborador_id);
+        const newOnes = added.filter(a => !existingIds.includes(a.colaborador_id));
+        return { ...prev, [evId]: [...existing, ...newOnes] };
+      });
+      setAddingDest(null);
+    } catch (err) {
+      alert('Error al agregar sector: ' + err.message);
+    }
+  };
+
+  const handleRemoveDest = async (evId, destId) => {
+    try {
+      await eliminarDestinatario(destId);
+      setDestinatariosMap(prev => ({
+        ...prev,
+        [evId]: (prev[evId] || []).filter(d => d.id !== destId),
+      }));
+    } catch (err) {
+      console.error('Remove destinatario failed:', err);
+    }
+  };
+
+  const handleToggleObsequio = async (evId, destId, current) => {
+    try {
+      await toggleObsequioEntregado(destId, !current);
+      setDestinatariosMap(prev => ({
+        ...prev,
+        [evId]: (prev[evId] || []).map(d => d.id === destId ? { ...d, obsequio_entregado: !current } : d),
+      }));
+    } catch (err) {
+      console.error('Toggle obsequio failed:', err);
+    }
+  };
+
   return (
     <div style={{ padding: '1rem', borderBottom: '1px solid var(--neutral-100, #f1f5f9)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -415,12 +503,17 @@ function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
         events.map(ev => {
           const cfg = TIPO_CONFIG[ev.tipo] || TIPO_CONFIG.otro;
           const atts = attachmentsMap[ev.id] || [];
+          const dests = destinatariosMap[ev.id] || [];
+          const showDests = expandedDest[ev.id];
+          const entregados = dests.filter(d => d.obsequio_entregado).length;
+
           return (
             <div key={ev.id} style={{
-              padding: '0.65rem', marginBottom: '0.4rem',
+              padding: '0.65rem', marginBottom: '0.5rem',
               borderRadius: '8px', border: `1px solid ${ev.color || cfg.color}20`,
               background: cfg.bg,
             }}>
+              {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -432,9 +525,7 @@ function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
                     </span>
                   </div>
                   {ev.descripcion && (
-                    <p style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', margin: '0.2rem 0 0' }}>
-                      {ev.descripcion}
-                    </p>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', margin: '0.2rem 0 0' }}>{ev.descripcion}</p>
                   )}
                   <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                     <span style={{
@@ -447,17 +538,166 @@ function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
                         background: '#fef3c7', color: '#92400e', fontWeight: 600,
                       }}>🎁 Obsequio</span>
                     )}
+                    {dests.length > 0 && (
+                      <span style={{
+                        fontSize: '0.6rem', padding: '1px 6px', borderRadius: '8px',
+                        background: '#dbeafe', color: '#1e40af', fontWeight: 600,
+                      }}>👥 {dests.length} destinatarios</span>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => onDelete(ev.id)} style={{
                   border: 'none', background: 'none', cursor: 'pointer',
-                  fontSize: '0.8rem', color: 'var(--neutral-400)',
-                  padding: '2px', lineHeight: 1,
+                  fontSize: '0.8rem', color: 'var(--neutral-400)', padding: '2px', lineHeight: 1,
                 }}>✕</button>
               </div>
 
-              {/* Attachments */}
+              {/* Destinatarios section */}
               <div style={{ marginTop: '0.4rem' }}>
+                <button
+                  onClick={() => setExpandedDest(prev => ({ ...prev, [ev.id]: !prev[ev.id] }))}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem', width: '100%',
+                    border: 'none', background: 'none', cursor: 'pointer',
+                    fontSize: '0.7rem', fontWeight: 600, color: '#475569',
+                    padding: '3px 0', marginBottom: '2px',
+                  }}
+                >
+                  <span style={{ transform: showDests ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}>▶</span>
+                  👥 Destinatarios ({dests.length})
+                  {ev.obsequio && dests.length > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: '#059669', fontWeight: 700 }}>
+                      🎁 {entregados}/{dests.length}
+                    </span>
+                  )}
+                </button>
+
+                {showDests && (
+                  <div style={{ marginTop: '0.2rem' }}>
+                    {/* List of destinatarios */}
+                    {dests.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '0.3rem', maxHeight: '180px', overflowY: 'auto' }}>
+                        {dests.map(d => (
+                          <div key={d.id} style={{
+                            display: 'flex', alignItems: 'center', gap: '0.3rem',
+                            fontSize: '0.68rem', padding: '3px 4px', borderRadius: '4px',
+                            background: 'rgba(255,255,255,0.7)',
+                          }}>
+                            {ev.obsequio && (
+                              <input type="checkbox" checked={d.obsequio_entregado}
+                                onChange={() => handleToggleObsequio(ev.id, d.id, d.obsequio_entregado)}
+                                title={d.obsequio_entregado ? 'Obsequio entregado' : 'Marcar como entregado'}
+                                style={{ cursor: 'pointer', accentColor: '#059669' }}
+                              />
+                            )}
+                            <span style={{
+                              flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              textDecoration: d.obsequio_entregado ? 'line-through' : 'none',
+                              color: d.obsequio_entregado ? '#94a3b8' : '#334155',
+                            }}>
+                              {d.colaborador?.nombre_completo || 'Sin nombre'}
+                            </span>
+                            <span style={{ fontSize: '0.58rem', color: '#94a3b8', flexShrink: 0 }}>
+                              {d.colaborador?.area || ''}
+                            </span>
+                            <button onClick={() => handleRemoveDest(ev.id, d.id)} style={{
+                              border: 'none', background: 'none', cursor: 'pointer',
+                              fontSize: '0.6rem', color: '#dc2626', padding: '0 2px', lineHeight: 1,
+                            }}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '0.68rem', color: '#94a3b8', margin: '0.2rem 0', textAlign: 'center' }}>Sin destinatarios aún</p>
+                    )}
+
+                    {/* Add destinatarios controls */}
+                    {addingDest === ev.id ? (
+                      <div style={{
+                        marginTop: '0.3rem', padding: '0.4rem',
+                        background: 'white', borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                      }}>
+                        {/* Sector buttons */}
+                        <div style={{ marginBottom: '0.35rem' }}>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Agregar sector completo</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                            {allSectores.map(sector => (
+                              <button key={sector} onClick={() => handleAddSector(ev.id, sector)}
+                                style={{
+                                  fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                                  border: '1px solid #cbd5e1', background: '#f8fafc',
+                                  cursor: 'pointer', fontWeight: 600, color: '#475569',
+                                  transition: 'all 0.15s',
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.background = '#1E5FA6'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#1E5FA6'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                              >
+                                {sector}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Individual search */}
+                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', marginBottom: '0.2rem', textTransform: 'uppercase' }}>O agregar individual</div>
+                        <input
+                          type="text" placeholder="Buscar colaborador..."
+                          value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                          style={{ ...inputStyle, fontSize: '0.72rem', padding: '0.3rem 0.5rem', marginBottom: '0.25rem' }}
+                          autoFocus
+                        />
+                        <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                          {allColaboradores
+                            .filter(c => {
+                              if (!searchTerm.trim()) return false;
+                              const existingIds = (destinatariosMap[ev.id] || []).map(d => d.colaborador_id);
+                              return !existingIds.includes(c.id) &&
+                                c.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase());
+                            })
+                            .slice(0, 15)
+                            .map(c => (
+                              <div key={c.id}
+                                onClick={() => { handleAddPersona(ev.id, c.id); setSearchTerm(''); }}
+                                style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  padding: '3px 6px', borderRadius: '4px', cursor: 'pointer',
+                                  fontSize: '0.68rem', transition: 'background 0.1s',
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
+                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                              >
+                                <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
+                                <span style={{ fontSize: '0.58rem', color: '#94a3b8' }}>{c.area}</span>
+                              </div>
+                            ))}
+                        </div>
+
+                        <button onClick={() => { setAddingDest(null); setSearchTerm(''); }} style={{
+                          fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
+                          border: '1px solid #e2e8f0', background: 'white',
+                          cursor: 'pointer', marginTop: '0.25rem', color: '#64748b',
+                        }}>Cerrar</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setAddingDest(ev.id)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                          fontSize: '0.65rem', color: '#059669', cursor: 'pointer',
+                          fontWeight: 600, padding: '2px 6px', borderRadius: '4px',
+                          background: '#ecfdf5', border: '1px solid #a7f3d0',
+                        }}
+                      >
+                        + Agregar personas/sector
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Attachments */}
+              <div style={{ marginTop: '0.3rem' }}>
                 {atts.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '0.3rem' }}>
                     {atts.map(att => (
@@ -511,13 +751,46 @@ function CreateModal({ date, onClose, onCreate }) {
     notificar_whatsapp: false,
   });
   const [pendingFiles, setPendingFiles] = useState([]);
+  const [pendingDests, setPendingDests] = useState([]);
+  const [allColabs, setAllColabs] = useState([]);
+  const [allSects, setAllSects] = useState([]);
+  const [destSearch, setDestSearch] = useState('');
+  const [showDestPicker, setShowDestPicker] = useState(false);
+
+  // Load colaboradores on mount
+  useEffect(() => {
+    Promise.all([obtenerColaboradores(), obtenerSectores()]).then(([c, s]) => {
+      setAllColabs(c);
+      setAllSects(s);
+    });
+  }, []);
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.titulo.trim()) return alert('El título es obligatorio');
-    onCreate(form, pendingFiles);
+    onCreate(form, pendingFiles, pendingDests.map(d => d.id));
+  };
+
+  const addDest = (colab) => {
+    if (!pendingDests.find(d => d.id === colab.id)) {
+      setPendingDests(prev => [...prev, colab]);
+    }
+    setDestSearch('');
+  };
+
+  const addSectorDests = (area) => {
+    const sectorColabs = allColabs.filter(c => c.area === area);
+    setPendingDests(prev => {
+      const existingIds = new Set(prev.map(d => d.id));
+      const newOnes = sectorColabs.filter(c => !existingIds.has(c.id));
+      return [...prev, ...newOnes];
+    });
+  };
+
+  const removeDest = (id) => {
+    setPendingDests(prev => prev.filter(d => d.id !== id));
   };
 
   const handleFileSelect = (e) => {
@@ -613,6 +886,100 @@ function CreateModal({ date, onClose, onCreate }) {
               <input type="checkbox" checked={form.notificar_whatsapp} onChange={e => update('notificar_whatsapp', e.target.checked)} />
               📱 Notificar WA
             </label>
+          </div>
+
+          {/* DESTINATARIOS PICKER */}
+          <div>
+            <label style={labelStyle}>👥 Destinatarios ({pendingDests.length})</label>
+            
+            {/* Selected people */}
+            {pendingDests.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '0.4rem' }}>
+                {pendingDests.map(d => (
+                  <span key={d.id} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                    fontSize: '0.7rem', padding: '2px 6px', borderRadius: '12px',
+                    background: '#dbeafe', color: '#1e40af', fontWeight: 500,
+                  }}>
+                    {d.nombre_completo}
+                    <button type="button" onClick={() => removeDest(d.id)} style={{
+                      border: 'none', background: 'none', cursor: 'pointer',
+                      fontSize: '0.65rem', color: '#dc2626', padding: '0 1px', lineHeight: 1,
+                    }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {showDestPicker ? (
+              <div style={{
+                padding: '0.4rem', background: '#f8fafc',
+                borderRadius: '8px', border: '1px solid #e2e8f0',
+              }}>
+                {/* Sector bulk-add */}
+                <div style={{ marginBottom: '0.35rem' }}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', marginBottom: '0.15rem', textTransform: 'uppercase' }}>Agregar sector completo</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                    {allSects.map(s => (
+                      <button type="button" key={s} onClick={() => addSectorDests(s)}
+                        style={{
+                          fontSize: '0.62rem', padding: '2px 8px', borderRadius: '4px',
+                          border: '1px solid #cbd5e1', background: 'white',
+                          cursor: 'pointer', fontWeight: 600, color: '#475569',
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = '#1E5FA6'; e.currentTarget.style.color = 'white'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#475569'; }}
+                      >{s}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Individual search */}
+                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', marginBottom: '0.15rem', textTransform: 'uppercase' }}>O buscar individual</div>
+                <input type="text" placeholder="Buscar colaborador..."
+                  value={destSearch} onChange={e => setDestSearch(e.target.value)}
+                  style={{ ...inputStyle, fontSize: '0.75rem', padding: '0.3rem 0.5rem', marginBottom: '0.2rem' }}
+                />
+                {destSearch.trim() && (
+                  <div style={{ maxHeight: '100px', overflowY: 'auto' }}>
+                    {allColabs
+                      .filter(c => !pendingDests.find(d => d.id === c.id) &&
+                        c.nombre_completo.toLowerCase().includes(destSearch.toLowerCase()))
+                      .slice(0, 10)
+                      .map(c => (
+                        <div key={c.id} onClick={() => addDest(c)}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between',
+                            padding: '3px 6px', borderRadius: '4px', cursor: 'pointer',
+                            fontSize: '0.7rem',
+                          }}
+                          onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
+                          onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
+                          <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>{c.area}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                <button type="button" onClick={() => { setShowDestPicker(false); setDestSearch(''); }} style={{
+                  fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
+                  border: '1px solid #e2e8f0', background: 'white',
+                  cursor: 'pointer', marginTop: '0.2rem', color: '#64748b',
+                }}>Cerrar</button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setShowDestPicker(true)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                  fontSize: '0.75rem', padding: '0.35rem 0.65rem', borderRadius: '6px',
+                  border: '1px dashed #a7f3d0', background: '#ecfdf5',
+                  cursor: 'pointer', fontWeight: 500, color: '#059669',
+                }}
+              >
+                + Agregar personas o sector
+              </button>
+            )}
           </div>
 
           {/* FILE UPLOAD */}

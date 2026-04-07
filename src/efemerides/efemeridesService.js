@@ -196,3 +196,114 @@ export async function getSignedDownloadUrl(storagePath, fileName) {
   if (error) throw error;
   return data?.signedUrl;
 }
+
+// ─── COLABORADORES ───
+
+/**
+ * Obtener todos los colaboradores activos
+ */
+export async function obtenerColaboradores() {
+  const { data, error } = await supabase
+    .from('fichadas_colaboradores')
+    .select('id, nombre_completo, area, sector, activo')
+    .eq('activo', true)
+    .order('nombre_completo');
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Obtener sectores distintos (de colaboradores activos)
+ */
+export async function obtenerSectores() {
+  const { data, error } = await supabase
+    .from('fichadas_colaboradores')
+    .select('area, sector')
+    .eq('activo', true);
+  if (error) throw error;
+  // Extraer valores únicos de area (campo principal de agrupación)
+  const areas = [...new Set((data || []).map(c => c.area).filter(Boolean))].sort();
+  return areas;
+}
+
+// ─── DESTINATARIOS ───
+
+/**
+ * Obtener destinatarios de una efeméride (con datos del colaborador)
+ */
+export async function getDestinatarios(efemeride_id) {
+  const { data, error } = await supabase
+    .from('rrhh_efemerides_destinatarios')
+    .select('*, colaborador:fichadas_colaboradores(id, nombre_completo, area, sector)')
+    .eq('efemeride_id', efemeride_id)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Agregar colaboradores individuales a una efeméride
+ */
+export async function agregarDestinatarios(efemeride_id, colaborador_ids) {
+  const rows = colaborador_ids.map(id => ({ efemeride_id, colaborador_id: id }));
+  const { data, error } = await supabase
+    .from('rrhh_efemerides_destinatarios')
+    .upsert(rows, { onConflict: 'efemeride_id,colaborador_id', ignoreDuplicates: true })
+    .select('*, colaborador:fichadas_colaboradores(id, nombre_completo, area, sector)');
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Agregar todo un sector/área a una efeméride
+ */
+export async function agregarSector(efemeride_id, area) {
+  // 1. Obtener todos los colaboradores del área
+  const { data: colaboradores, error: fetchErr } = await supabase
+    .from('fichadas_colaboradores')
+    .select('id')
+    .eq('area', area)
+    .eq('activo', true);
+  if (fetchErr) throw fetchErr;
+  if (!colaboradores?.length) return [];
+
+  // 2. Insertar como destinatarios
+  const ids = colaboradores.map(c => c.id);
+  return agregarDestinatarios(efemeride_id, ids);
+}
+
+/**
+ * Eliminar un destinatario
+ */
+export async function eliminarDestinatario(destinatario_id) {
+  const { error } = await supabase
+    .from('rrhh_efemerides_destinatarios')
+    .delete()
+    .eq('id', destinatario_id);
+  if (error) throw error;
+}
+
+/**
+ * Eliminar todos los destinatarios de una efeméride
+ */
+export async function eliminarTodosDestinatarios(efemeride_id) {
+  const { error } = await supabase
+    .from('rrhh_efemerides_destinatarios')
+    .delete()
+    .eq('efemeride_id', efemeride_id);
+  if (error) throw error;
+}
+
+/**
+ * Marcar/desmarcar obsequio entregado
+ */
+export async function toggleObsequioEntregado(destinatario_id, entregado) {
+  const { data, error } = await supabase
+    .from('rrhh_efemerides_destinatarios')
+    .update({ obsequio_entregado: entregado })
+    .eq('id', destinatario_id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
