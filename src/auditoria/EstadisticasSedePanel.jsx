@@ -155,9 +155,9 @@ export default function EstadisticasSedePanel() {
         gap: '0.75rem', marginBottom: '1.5rem',
       }}>
         <KPICard icon="💰" label="Total Facturado" value={formatMoney(metricas.total_facturado)} color="#3b82f6" />
-        <KPICard icon="✅" label="Total Cobrado" value={formatMoney(metricas.total_cobrado)} color="#10b981" />
         <KPICard icon="📋" label="Operaciones" value={formatNumber(metricas.total_operaciones)} color="#8b5cf6" />
         <KPICard icon="👥" label="Pacientes Únicos" value={formatNumber(metricas.pacientes_unicos)} color="#f59e0b" />
+        <KPICard icon="💳" label="Formas de Pago" value={Object.keys(metricas.por_forma_pago || {}).length} color="#10b981" />
       </div>
 
       {/* Tab Content */}
@@ -284,7 +284,7 @@ function VistaRecepcionistas({ resumen, totalGeneral, detalle, setDetalle }) {
                   border: '1px solid #bfdbfe', borderTop: 'none',
                   animation: 'slideDown 0.2s ease',
                 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                     {/* Por familia */}
                     <div>
                       <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
@@ -325,6 +325,26 @@ function VistaRecepcionistas({ resumen, totalGeneral, detalle, setDetalle }) {
                           </div>
                         ))}
                     </div>
+
+                    {/* Por forma de pago */}
+                    <div>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+                        Forma de Pago
+                      </div>
+                      {Object.entries(r.por_forma_pago || {})
+                        .sort((a, b) => b[1].importe - a[1].importe)
+                        .map(([fp, val]) => (
+                          <div key={fp} style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '0.25rem 0', fontSize: '0.78rem', borderBottom: '1px solid #e2e8f0',
+                          }}>
+                            <span style={{ color: '#475569' }}>{fp}</span>
+                            <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                              {formatMoney(val.importe)} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({val.cantidad})</span>
+                            </span>
+                          </div>
+                        ))}
+                    </div>
                   </div>
 
                   <div style={{
@@ -334,10 +354,10 @@ function VistaRecepcionistas({ resumen, totalGeneral, detalle, setDetalle }) {
                     fontSize: '0.78rem',
                   }}>
                     <span style={{ color: '#3b82f6', fontWeight: 600 }}>
-                      💰 Cobrado: {formatMoney(r.total_cobrado)}
+                      Promedio/op: {formatMoney(r.total_facturado / (r.cantidad_operaciones || 1))}
                     </span>
                     <span style={{ color: '#64748b' }}>
-                      Promedio/op: {formatMoney(r.total_facturado / (r.cantidad_operaciones || 1))}
+                      {r.dias_trabajados} días activos
                     </span>
                   </div>
                 </div>
@@ -368,6 +388,8 @@ function VistaMetricas({ metricas }) {
     .sort((a, b) => b[1].cantidad - a[1].cantidad);
   const servicios = Object.entries(metricas.por_servicio)
     .sort((a, b) => b[1].cantidad - a[1].cantidad);
+  const formasPago = Object.entries(metricas.por_forma_pago || {})
+    .sort((a, b) => b[1].importe - a[1].importe);
   const diasOrdenados = Object.entries(metricas.por_dia)
     .sort((a, b) => a[0].localeCompare(b[0]));
   const maxDiaImporte = Math.max(...diasOrdenados.map(([, d]) => d.importe), 1);
@@ -397,8 +419,8 @@ function VistaMetricas({ metricas }) {
         </div>
       </div>
 
-      {/* Grid: Familias + Servicios */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+      {/* Grid: Familias + Servicios + Formas de Pago */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
         {/* Familias */}
         <div className="aud-card" style={{ padding: '1rem' }}>
           <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.6rem' }}>
@@ -436,6 +458,32 @@ function VistaMetricas({ metricas }) {
               padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9',
             }}>
               <span style={{ fontSize: '0.82rem', color: '#334155' }}>{srv}</span>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>{formatNumber(val.cantidad)}</span>
+                <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginLeft: '0.4rem' }}>{formatMoney(val.importe)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Formas de Pago */}
+        <div className="aud-card" style={{ padding: '1rem' }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.6rem' }}>
+            💳 Formas de Pago
+          </div>
+          {formasPago.map(([fp, val], idx) => (
+            <div key={fp} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '0.4rem 0', borderBottom: '1px solid #f1f5f9',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{
+                  width: '10px', height: '10px', borderRadius: '50%',
+                  background: CHART_COLORS[(idx + 4) % CHART_COLORS.length],
+                  display: 'inline-block',
+                }} />
+                <span style={{ fontSize: '0.82rem', color: '#334155' }}>{fp}</span>
+              </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>{formatNumber(val.cantidad)}</span>
                 <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginLeft: '0.4rem' }}>{formatMoney(val.importe)}</span>
@@ -487,7 +535,6 @@ function VistaMetricas({ metricas }) {
 function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
   const [expandedUser, setExpandedUser] = useState(null);
   const totalDia = datosRaw.reduce((s, r) => s + (Number(r.total_importe) || 0), 0);
-  const totalCobrado = datosRaw.reduce((s, r) => s + (Number(r.cobrado_linea) || 0), 0);
   const fechaLabel = new Date(fechaDiaria + 'T12:00:00').toLocaleDateString('es-AR', {
     weekday: 'long', day: 'numeric', month: 'long',
   });
@@ -526,7 +573,7 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
             padding: '0.35rem 0.75rem', borderRadius: '8px',
             background: '#f0fdf4', fontSize: '0.82rem', fontWeight: 600, color: '#10b981',
           }}>
-            ✅ {formatMoney(totalCobrado)}
+            📋 {datosRaw.length} ops
           </span>
         </div>
       </div>
@@ -544,7 +591,6 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                 <th style={{ ...thStyle, textAlign: 'left' }}>Recepcionista</th>
                 <th style={thStyle}>Operaciones</th>
                 <th style={thStyle}>Facturado</th>
-                <th style={thStyle}>Cobrado</th>
                 <th style={thStyle}>% del Total</th>
                 <th style={thStyle}></th>
               </tr>
@@ -567,7 +613,6 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                       <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b' }}>{formatUserName(r.nombre)}</td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>{r.cantidad_operaciones}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{formatMoney(r.total_facturado)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: '#10b981' }}>{formatMoney(r.total_cobrado)}</td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         {totalDia > 0 ? ((r.total_facturado / totalDia) * 100).toFixed(1) : 0}%
                       </td>
@@ -589,7 +634,7 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                     {/* Expanded detail rows */}
                     {isExpanded && (
                       <tr>
-                        <td colSpan={7} style={{ padding: 0 }}>
+                        <td colSpan={6} style={{ padding: 0 }}>
                           <div style={{
                             background: '#f8fafc', padding: '0.75rem 1rem',
                             borderBottom: '2px solid #bfdbfe',
@@ -614,10 +659,10 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                                     <th style={thDetailStyle}>Hora</th>
                                     <th style={thDetailStyle}>Turno</th>
                                     <th style={{ ...thDetailStyle, textAlign: 'left' }}>Paciente</th>
-                                    <th style={{ ...thDetailStyle, textAlign: 'left' }}>Concepto</th>
+                                    <th style={{ ...thDetailStyle, textAlign: 'left' }}>Descripción</th>
                                     <th style={{ ...thDetailStyle, textAlign: 'left' }}>Familia</th>
+                                    <th style={{ ...thDetailStyle, textAlign: 'left' }}>Forma de Pago</th>
                                     <th style={thDetailStyle}>Importe</th>
-                                    <th style={thDetailStyle}>Cobrado</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -639,17 +684,17 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                                       <td style={{ ...tdDetailStyle, color: '#334155', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {op.paciente || '—'}
                                       </td>
-                                      <td style={{ ...tdDetailStyle, color: '#475569', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {op.concepto || '—'}
+                                      <td style={{ ...tdDetailStyle, color: '#475569', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {op.descripcion || '—'}
                                       </td>
                                       <td style={{ ...tdDetailStyle, color: '#64748b' }}>
                                         {op.familia || '—'}
                                       </td>
+                                      <td style={{ ...tdDetailStyle, color: '#0e7490', fontSize: '0.72rem' }}>
+                                        {op.forma_de_pago || '—'}
+                                      </td>
                                       <td style={{ ...tdDetailStyle, textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>
                                         {formatMoney(Number(op.total_importe) || 0)}
-                                      </td>
-                                      <td style={{ ...tdDetailStyle, textAlign: 'right', color: '#10b981' }}>
-                                        {formatMoney(Number(op.cobrado_linea) || 0)}
                                       </td>
                                     </tr>
                                   ))}
@@ -670,7 +715,6 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                 <td style={tdStyle}>TOTAL</td>
                 <td style={{ ...tdStyle, textAlign: 'center' }}>{resumen.reduce((s, r) => s + r.cantidad_operaciones, 0)}</td>
                 <td style={{ ...tdStyle, textAlign: 'right', color: '#3b82f6' }}>{formatMoney(totalDia)}</td>
-                <td style={{ ...tdStyle, textAlign: 'right', color: '#10b981' }}>{formatMoney(totalCobrado)}</td>
                 <td style={{ ...tdStyle, textAlign: 'center' }}>100%</td>
                 <td style={tdStyle}></td>
               </tr>
