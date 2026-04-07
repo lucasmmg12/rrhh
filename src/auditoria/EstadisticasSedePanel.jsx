@@ -700,6 +700,72 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                                 </tbody>
                               </table>
                             </div>
+
+                            {/* ── Resumen por Forma de Pago + Depósitos ── */}
+                            {(() => {
+                              const porFormaPago = {};
+                              let totalDepositos = 0;
+                              let cantDepositos = 0;
+                              for (const op of opsDetalle) {
+                                const fp = op.forma_de_pago || 'Sin especificar';
+                                if (!porFormaPago[fp]) porFormaPago[fp] = { cantidad: 0, importe: 0 };
+                                porFormaPago[fp].cantidad += 1;
+                                porFormaPago[fp].importe += Number(op.total_importe) || 0;
+                                if ((op.descripcion || '').toLowerCase().includes('deposito')) {
+                                  totalDepositos += Number(op.total_importe) || 0;
+                                  cantDepositos += 1;
+                                }
+                              }
+                              const fpEntries = Object.entries(porFormaPago).sort((a, b) => b[1].importe - a[1].importe);
+                              return (
+                                <div style={{
+                                  display: 'grid', gridTemplateColumns: cantDepositos > 0 ? '1fr auto' : '1fr',
+                                  gap: '0.75rem', marginTop: '0.75rem',
+                                }}>
+                                  {/* Totales por forma de pago */}
+                                  <div style={{
+                                    display: 'flex', flexWrap: 'wrap', gap: '0.5rem',
+                                  }}>
+                                    {fpEntries.map(([fp, val]) => (
+                                      <div key={fp} style={{
+                                        padding: '0.4rem 0.75rem', borderRadius: '8px',
+                                        background: '#f0f9ff', border: '1px solid #bfdbfe',
+                                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                      }}>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                                          💳 {fp}
+                                        </span>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
+                                          {formatMoney(val.importe)}
+                                        </span>
+                                        <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                                          ({val.cantidad})
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Total depósitos */}
+                                  {cantDepositos > 0 && (
+                                    <div style={{
+                                      padding: '0.4rem 0.75rem', borderRadius: '8px',
+                                      background: '#fef3c7', border: '1px solid #fbbf24',
+                                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    }}>
+                                      <span style={{ fontSize: '0.72rem', color: '#92400e', fontWeight: 600 }}>
+                                        🏦 Depósitos
+                                      </span>
+                                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#92400e' }}>
+                                        {formatMoney(totalDepositos)}
+                                      </span>
+                                      <span style={{ fontSize: '0.65rem', color: '#b45309' }}>
+                                        ({cantDepositos})
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
