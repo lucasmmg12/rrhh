@@ -221,3 +221,14 @@ export async function obtenerColaboradoresPorArea(area) {
   if (error) throw error;
   return data || [];
 }
+
+export async function obtenerTodosColaboradores() {
+  const { data, error } = await supabase
+    .from('fichadas_colaboradores')
+    .select('id, nombre_completo, area')
+    .eq('activo', true)
+    .order('nombre_completo');
+
+  if (error) throw error;
+  return data || [];
+}

@@ -28,6 +28,7 @@ import {
   obtenerPlanesAnteriores,
   actualizarEstadoPlan,
   obtenerColaboradoresPorArea,
+  obtenerTodosColaboradores,
 } from './auditoriaService';
 
 // ═══════════════════════════════════════════════════════════════
@@ -272,6 +273,13 @@ function NewAuditView({ onSaved, currentUser }) {
   );
 
   // ─── Load previous plans when sector changes ──────────
+  // Load ALL collaborators on mount for search pickers
+  useEffect(() => {
+    obtenerTodosColaboradores()
+      .then(setColaboradores)
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     if (general.sector) {
       setLoadingPrevPlans(true);
@@ -279,10 +287,6 @@ function NewAuditView({ onSaved, currentUser }) {
         .then(setPlanesAnteriores)
         .catch(console.error)
         .finally(() => setLoadingPrevPlans(false));
-
-      obtenerColaboradoresPorArea(general.sector)
-        .then(setColaboradores)
-        .catch(console.error);
     }
   }, [general.sector]);
 
@@ -416,6 +420,7 @@ function NewAuditView({ onSaved, currentUser }) {
             setNewPlan={setNewPlan}
             addPlan={addPlan}
             removePlan={removePlan}
+            colaboradores={colaboradores}
           />
         )}
         {step === 5 && (
@@ -464,6 +469,25 @@ function NewAuditView({ onSaved, currentUser }) {
 // ═══════════════════════════════════════════════════════════════
 function StepDatosGenerales({ general, setGeneral, colaboradores }) {
   const update = (key, value) => setGeneral(prev => ({ ...prev, [key]: value }));
+  const [respSearch, setRespSearch] = useState('');
+
+  // Parse responsables from comma-separated string
+  const responsables = general.responsable_presente
+    ? general.responsable_presente.split('|||').filter(Boolean)
+    : [];
+
+  const addResponsable = (nombre) => {
+    if (responsables.length >= 2) return;
+    if (responsables.includes(nombre)) return;
+    const updated = [...responsables, nombre].join('|||');
+    update('responsable_presente', updated);
+    setRespSearch('');
+  };
+
+  const removeResponsable = (nombre) => {
+    const updated = responsables.filter(r => r !== nombre).join('|||');
+    update('responsable_presente', updated);
+  };
 
   return (
     <div>
@@ -505,26 +529,116 @@ function StepDatosGenerales({ general, setGeneral, colaboradores }) {
         </div>
 
         <div className="aud-field">
-          <label className="aud-label">Responsable presente</label>
-          {colaboradores.length > 0 ? (
-            <select
-              className="aud-select"
-              value={general.responsable_presente}
-              onChange={e => update('responsable_presente', e.target.value)}
-            >
-              <option value="">Seleccionar...</option>
-              {colaboradores.map(c => (
-                <option key={c.id} value={c.nombre_completo}>{c.nombre_completo}</option>
+          <label className="aud-label">Responsables presentes (máx 2)</label>
+
+          {/* Selected responsables as pills */}
+          {responsables.length > 0 && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '0.45rem',
+            }}>
+              {responsables.map(r => (
+                <span key={r} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                  padding: '0.3rem 0.65rem', borderRadius: '20px',
+                  background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                  border: '1px solid #bfdbfe', fontSize: '0.82rem',
+                  fontWeight: 600, color: '#1e40af',
+                }}>
+                  👤 {r}
+                  <button onClick={() => removeResponsable(r)} style={{
+                    border: 'none', background: 'none', cursor: 'pointer',
+                    color: '#93c5fd', fontSize: '0.75rem', padding: '0 2px',
+                    lineHeight: 1, transition: 'color 0.15s',
+                  }}
+                    onMouseOver={e => e.currentTarget.style.color = '#dc2626'}
+                    onMouseOut={e => e.currentTarget.style.color = '#93c5fd'}
+                  >✕</button>
+                </span>
               ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              className="aud-input"
-              placeholder="Nombre del responsable"
-              value={general.responsable_presente}
-              onChange={e => update('responsable_presente', e.target.value)}
-            />
+            </div>
+          )}
+
+          {/* Search input */}
+          {responsables.length < 2 && (
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="aud-input"
+                placeholder="🔍 Buscar responsable por nombre..."
+                value={respSearch}
+                onChange={e => setRespSearch(e.target.value)}
+                style={{ marginBottom: 0 }}
+              />
+              {respSearch.trim() && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                  background: 'white', borderRadius: '0 0 10px 10px',
+                  border: '1px solid #e2e8f0', borderTop: 'none',
+                  maxHeight: '180px', overflowY: 'auto',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                }}>
+                  {colaboradores
+                    .filter(c =>
+                      !responsables.includes(c.nombre_completo) &&
+                      c.nombre_completo.toLowerCase().includes(respSearch.toLowerCase())
+                    )
+                    .slice(0, 12)
+                    .map(c => (
+                      <div key={c.id}
+                        onClick={() => addResponsable(c.nombre_completo)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.5rem 0.75rem', cursor: 'pointer',
+                          fontSize: '0.85rem', borderBottom: '1px solid #f8fafc',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
+                        onMouseOut={e => e.currentTarget.style.background = 'white'}
+                      >
+                        <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
+                        <span style={{
+                          fontSize: '0.68rem', color: '#94a3b8',
+                          background: '#f1f5f9', padding: '2px 8px',
+                          borderRadius: '6px',
+                        }}>{c.area}</span>
+                      </div>
+                    ))}
+                  {colaboradores.filter(c =>
+                    !responsables.includes(c.nombre_completo) &&
+                    c.nombre_completo.toLowerCase().includes(respSearch.toLowerCase())
+                  ).length === 0 && (
+                    <div style={{ padding: '0.65rem', fontSize: '0.82rem', color: '#94a3b8', textAlign: 'center' }}>
+                      Sin resultados — escribí para agregar manualmente
+                    </div>
+                  )}
+                  {/* Manual add option */}
+                  {respSearch.trim().length > 2 && !colaboradores.find(c =>
+                    c.nombre_completo.toLowerCase() === respSearch.toLowerCase()
+                  ) && (
+                    <div
+                      onClick={() => addResponsable(respSearch.trim())}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.3rem',
+                        padding: '0.5rem 0.75rem', cursor: 'pointer',
+                        fontSize: '0.82rem', background: '#f0fdf4',
+                        borderTop: '1px solid #e2e8f0',
+                        fontWeight: 600, color: '#059669',
+                      }}
+                      onMouseOver={e => e.currentTarget.style.background = '#dcfce7'}
+                      onMouseOut={e => e.currentTarget.style.background = '#f0fdf4'}
+                    >
+                      + Agregar "{respSearch.trim()}" como responsable
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {responsables.length >= 2 && (
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+              Máximo 2 responsables alcanzado
+            </div>
           )}
         </div>
 
@@ -764,7 +878,14 @@ function StepHallazgos({ hallazgos, setHallazgos }) {
 // ═══════════════════════════════════════════════════════════════
 // STEP 5: PLANES DE ACCIÓN
 // ═══════════════════════════════════════════════════════════════
-function StepPlanesAccion({ planes, showPlanForm, setShowPlanForm, newPlan, setNewPlan, addPlan, removePlan }) {
+function StepPlanesAccion({ planes, showPlanForm, setShowPlanForm, newPlan, setNewPlan, addPlan, removePlan, colaboradores = [] }) {
+  const [respPlanSearch, setRespPlanSearch] = useState('');
+
+  const selectResponsable = (nombre) => {
+    setNewPlan(prev => ({ ...prev, responsable: nombre }));
+    setRespPlanSearch('');
+  };
+
   return (
     <div>
       <div className="aud-section-title">5. Plan de Acción</div>
@@ -845,12 +966,98 @@ function StepPlanesAccion({ planes, showPlanForm, setShowPlanForm, newPlan, setN
           </div>
           <div className="aud-field">
             <label className="aud-label">Responsable *</label>
-            <input
-              className="aud-input"
-              placeholder="¿Quién lo resuelve?"
-              value={newPlan.responsable}
-              onChange={e => setNewPlan(prev => ({ ...prev, responsable: e.target.value }))}
-            />
+            {/* Show selected responsable as pill */}
+            {newPlan.responsable && (
+              <div style={{ marginBottom: '0.35rem' }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                  padding: '0.3rem 0.65rem', borderRadius: '20px',
+                  background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                  border: '1px solid #bfdbfe', fontSize: '0.82rem',
+                  fontWeight: 600, color: '#1e40af',
+                }}>
+                  👤 {newPlan.responsable}
+                  <button onClick={() => setNewPlan(prev => ({ ...prev, responsable: '' }))} style={{
+                    border: 'none', background: 'none', cursor: 'pointer',
+                    color: '#93c5fd', fontSize: '0.75rem', padding: '0 2px',
+                    lineHeight: 1,
+                  }}
+                    onMouseOver={e => e.currentTarget.style.color = '#dc2626'}
+                    onMouseOut={e => e.currentTarget.style.color = '#93c5fd'}
+                  >✕</button>
+                </span>
+              </div>
+            )}
+            {/* Search input */}
+            {!newPlan.responsable && (
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="aud-input"
+                  placeholder="🔍 Buscar responsable por nombre..."
+                  value={respPlanSearch}
+                  onChange={e => setRespPlanSearch(e.target.value)}
+                  style={{ marginBottom: 0 }}
+                />
+                {respPlanSearch.trim() && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                    background: 'white', borderRadius: '0 0 10px 10px',
+                    border: '1px solid #e2e8f0', borderTop: 'none',
+                    maxHeight: '160px', overflowY: 'auto',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                  }}>
+                    {colaboradores
+                      .filter(c => c.nombre_completo.toLowerCase().includes(respPlanSearch.toLowerCase()))
+                      .slice(0, 10)
+                      .map(c => (
+                        <div key={c.id}
+                          onClick={() => selectResponsable(c.nombre_completo)}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '0.5rem 0.75rem', cursor: 'pointer',
+                            fontSize: '0.85rem', borderBottom: '1px solid #f8fafc',
+                            transition: 'background 0.1s',
+                          }}
+                          onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
+                          onMouseOut={e => e.currentTarget.style.background = 'white'}
+                        >
+                          <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
+                          <span style={{
+                            fontSize: '0.68rem', color: '#94a3b8',
+                            background: '#f1f5f9', padding: '2px 8px',
+                            borderRadius: '6px',
+                          }}>{c.area}</span>
+                        </div>
+                      ))}
+                    {colaboradores.filter(c =>
+                      c.nombre_completo.toLowerCase().includes(respPlanSearch.toLowerCase())
+                    ).length === 0 && (
+                      <div style={{ padding: '0.6rem', fontSize: '0.82rem', color: '#94a3b8', textAlign: 'center' }}>
+                        Sin resultados
+                      </div>
+                    )}
+                    {respPlanSearch.trim().length > 2 && !colaboradores.find(c =>
+                      c.nombre_completo.toLowerCase() === respPlanSearch.toLowerCase()
+                    ) && (
+                      <div
+                        onClick={() => selectResponsable(respPlanSearch.trim())}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.5rem 0.75rem', cursor: 'pointer',
+                          fontSize: '0.82rem', background: '#f0fdf4',
+                          borderTop: '1px solid #e2e8f0',
+                          fontWeight: 600, color: '#059669',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = '#dcfce7'}
+                        onMouseOut={e => e.currentTarget.style.background = '#f0fdf4'}
+                      >
+                        + Agregar "{respPlanSearch.trim()}" como responsable
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="aud-btn aud-btn-primary" style={{ flex: 1 }} onClick={addPlan}>
@@ -968,7 +1175,7 @@ function DetailView({ audit }) {
               {formatFecha(audit.fecha)} · Turno {audit.turno}
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--aud-text-secondary)' }}>
-              Auditor: {audit.auditor_nombre} {audit.responsable_presente && `· Resp: ${audit.responsable_presente}`}
+              Auditor: {audit.auditor_nombre} {audit.responsable_presente && `· Resp: ${audit.responsable_presente.replace(/\|\|\|/g, ', ')}`}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
