@@ -614,70 +614,86 @@ function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
                     {/* Add destinatarios controls */}
                     {addingDest === ev.id ? (
                       <div style={{
-                        marginTop: '0.3rem', padding: '0.4rem',
-                        background: 'white', borderRadius: '6px',
+                        marginTop: '0.3rem', padding: '0.5rem',
+                        background: 'white', borderRadius: '8px',
                         border: '1px solid #e2e8f0',
                       }}>
-                        {/* Sector buttons */}
-                        <div style={{ marginBottom: '0.35rem' }}>
-                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', marginBottom: '0.2rem', textTransform: 'uppercase' }}>Agregar sector completo</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                            {allSectores.map(sector => (
-                              <button key={sector} onClick={() => handleAddSector(ev.id, sector)}
-                                style={{
-                                  fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
-                                  border: '1px solid #cbd5e1', background: '#f8fafc',
-                                  cursor: 'pointer', fontWeight: 600, color: '#475569',
-                                  transition: 'all 0.15s',
-                                }}
-                                onMouseOver={e => { e.currentTarget.style.background = '#1E5FA6'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#1E5FA6'; }}
-                                onMouseOut={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
-                              >
-                                {sector}
-                              </button>
+                        {/* Two-column layout: sector dropdown + search */}
+                        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                          <select
+                            defaultValue=""
+                            onChange={e => { if (e.target.value) { handleAddSector(ev.id, e.target.value); e.target.value = ''; } }}
+                            style={{
+                              flex: 1, padding: '0.35rem 0.5rem', borderRadius: '6px',
+                              border: '1px solid #e2e8f0', fontSize: '0.72rem',
+                              background: 'white', color: '#334155', cursor: 'pointer',
+                              outline: 'none',
+                            }}
+                          >
+                            <option value="" disabled>📁 Agregar sector...</option>
+                            {allSectores.map(s => (
+                              <option key={s} value={s}>{s}</option>
                             ))}
-                          </div>
+                          </select>
+                          <button onClick={() => { setAddingDest(null); setSearchTerm(''); }} style={{
+                            padding: '0.35rem 0.6rem', borderRadius: '6px',
+                            border: '1px solid #e2e8f0', background: '#f8fafc',
+                            cursor: 'pointer', fontSize: '0.72rem', color: '#64748b',
+                          }}>✕</button>
                         </div>
 
                         {/* Individual search */}
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', marginBottom: '0.2rem', textTransform: 'uppercase' }}>O agregar individual</div>
-                        <input
-                          type="text" placeholder="Buscar colaborador..."
-                          value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                          style={{ ...inputStyle, fontSize: '0.72rem', padding: '0.3rem 0.5rem', marginBottom: '0.25rem' }}
-                          autoFocus
-                        />
-                        <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
-                          {allColaboradores
-                            .filter(c => {
-                              if (!searchTerm.trim()) return false;
-                              const existingIds = (destinatariosMap[ev.id] || []).map(d => d.colaborador_id);
-                              return !existingIds.includes(c.id) &&
-                                c.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase());
-                            })
-                            .slice(0, 15)
-                            .map(c => (
-                              <div key={c.id}
-                                onClick={() => { handleAddPersona(ev.id, c.id); setSearchTerm(''); }}
-                                style={{
-                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                  padding: '3px 6px', borderRadius: '4px', cursor: 'pointer',
-                                  fontSize: '0.68rem', transition: 'background 0.1s',
-                                }}
-                                onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
-                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                              >
-                                <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
-                                <span style={{ fontSize: '0.58rem', color: '#94a3b8' }}>{c.area}</span>
-                              </div>
-                            ))}
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="text" placeholder="🔍 Buscar colaborador por nombre..."
+                            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                            style={{
+                              width: '100%', padding: '0.35rem 0.5rem', borderRadius: '6px',
+                              border: '1px solid #e2e8f0', fontSize: '0.72rem',
+                              outline: 'none', boxSizing: 'border-box',
+                            }}
+                            autoFocus
+                          />
+                          {searchTerm.trim() && (
+                            <div style={{
+                              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                              background: 'white', borderRadius: '0 0 8px 8px',
+                              border: '1px solid #e2e8f0', borderTop: 'none',
+                              maxHeight: '140px', overflowY: 'auto',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                            }}>
+                              {allColaboradores
+                                .filter(c => {
+                                  const existingIds = (destinatariosMap[ev.id] || []).map(d => d.colaborador_id);
+                                  return !existingIds.includes(c.id) &&
+                                    c.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase());
+                                })
+                                .slice(0, 12)
+                                .map(c => (
+                                  <div key={c.id}
+                                    onClick={() => { handleAddPersona(ev.id, c.id); setSearchTerm(''); }}
+                                    style={{
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      padding: '0.35rem 0.5rem', cursor: 'pointer',
+                                      fontSize: '0.72rem', borderBottom: '1px solid #f1f5f9',
+                                      transition: 'background 0.1s',
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'white'}
+                                  >
+                                    <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
+                                    <span style={{ fontSize: '0.6rem', color: '#94a3b8', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>{c.area}</span>
+                                  </div>
+                                ))}
+                              {allColaboradores.filter(c => {
+                                const existingIds = (destinatariosMap[ev.id] || []).map(d => d.colaborador_id);
+                                return !existingIds.includes(c.id) && c.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase());
+                              }).length === 0 && (
+                                <div style={{ padding: '0.5rem', fontSize: '0.72rem', color: '#94a3b8', textAlign: 'center' }}>Sin resultados</div>
+                              )}
+                            </div>
+                          )}
                         </div>
-
-                        <button onClick={() => { setAddingDest(null); setSearchTerm(''); }} style={{
-                          fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
-                          border: '1px solid #e2e8f0', background: 'white',
-                          cursor: 'pointer', marginTop: '0.25rem', color: '#64748b',
-                        }}>Cerrar</button>
                       </div>
                     ) : (
                       <button
@@ -755,7 +771,6 @@ function CreateModal({ date, onClose, onCreate }) {
   const [allColabs, setAllColabs] = useState([]);
   const [allSects, setAllSects] = useState([]);
   const [destSearch, setDestSearch] = useState('');
-  const [showDestPicker, setShowDestPicker] = useState(false);
 
   // Load colaboradores on mount
   useEffect(() => {
@@ -892,94 +907,99 @@ function CreateModal({ date, onClose, onCreate }) {
           <div>
             <label style={labelStyle}>👥 Destinatarios ({pendingDests.length})</label>
             
-            {/* Selected people */}
+            {/* Selected people as pills */}
             {pendingDests.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '0.4rem' }}>
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '0.5rem',
+                padding: '0.4rem', background: '#f8fafc', borderRadius: '8px',
+                border: '1px solid #e2e8f0', maxHeight: '100px', overflowY: 'auto',
+              }}>
                 {pendingDests.map(d => (
                   <span key={d.id} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                    fontSize: '0.7rem', padding: '2px 6px', borderRadius: '12px',
+                    display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                    fontSize: '0.7rem', padding: '3px 8px', borderRadius: '12px',
                     background: '#dbeafe', color: '#1e40af', fontWeight: 500,
+                    lineHeight: 1.4,
                   }}>
                     {d.nombre_completo}
                     <button type="button" onClick={() => removeDest(d.id)} style={{
                       border: 'none', background: 'none', cursor: 'pointer',
-                      fontSize: '0.65rem', color: '#dc2626', padding: '0 1px', lineHeight: 1,
-                    }}>✕</button>
+                      fontSize: '0.6rem', color: '#93c5fd', padding: '0 1px', lineHeight: 1,
+                    }}
+                      onMouseOver={e => e.currentTarget.style.color = '#dc2626'}
+                      onMouseOut={e => e.currentTarget.style.color = '#93c5fd'}
+                    >✕</button>
                   </span>
                 ))}
               </div>
             )}
 
-            {showDestPicker ? (
-              <div style={{
-                padding: '0.4rem', background: '#f8fafc',
-                borderRadius: '8px', border: '1px solid #e2e8f0',
-              }}>
-                {/* Sector bulk-add */}
-                <div style={{ marginBottom: '0.35rem' }}>
-                  <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', marginBottom: '0.15rem', textTransform: 'uppercase' }}>Agregar sector completo</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                    {allSects.map(s => (
-                      <button type="button" key={s} onClick={() => addSectorDests(s)}
-                        style={{
-                          fontSize: '0.62rem', padding: '2px 8px', borderRadius: '4px',
-                          border: '1px solid #cbd5e1', background: 'white',
-                          cursor: 'pointer', fontWeight: 600, color: '#475569',
-                        }}
-                        onMouseOver={e => { e.currentTarget.style.background = '#1E5FA6'; e.currentTarget.style.color = 'white'; }}
-                        onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#475569'; }}
-                      >{s}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Individual search */}
-                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', marginBottom: '0.15rem', textTransform: 'uppercase' }}>O buscar individual</div>
-                <input type="text" placeholder="Buscar colaborador..."
-                  value={destSearch} onChange={e => setDestSearch(e.target.value)}
-                  style={{ ...inputStyle, fontSize: '0.75rem', padding: '0.3rem 0.5rem', marginBottom: '0.2rem' }}
-                />
-                {destSearch.trim() && (
-                  <div style={{ maxHeight: '100px', overflowY: 'auto' }}>
-                    {allColabs
-                      .filter(c => !pendingDests.find(d => d.id === c.id) &&
-                        c.nombre_completo.toLowerCase().includes(destSearch.toLowerCase()))
-                      .slice(0, 10)
-                      .map(c => (
-                        <div key={c.id} onClick={() => addDest(c)}
-                          style={{
-                            display: 'flex', justifyContent: 'space-between',
-                            padding: '3px 6px', borderRadius: '4px', cursor: 'pointer',
-                            fontSize: '0.7rem',
-                          }}
-                          onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
-                          onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
-                          <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>{c.area}</span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-                <button type="button" onClick={() => { setShowDestPicker(false); setDestSearch(''); }} style={{
-                  fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
-                  border: '1px solid #e2e8f0', background: 'white',
-                  cursor: 'pointer', marginTop: '0.2rem', color: '#64748b',
-                }}>Cerrar</button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => setShowDestPicker(true)}
+            {/* Controls: sector dropdown + individual search */}
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <select
+                defaultValue=""
+                onChange={e => { if (e.target.value) { addSectorDests(e.target.value); e.target.value = ''; } }}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                  fontSize: '0.75rem', padding: '0.35rem 0.65rem', borderRadius: '6px',
-                  border: '1px dashed #a7f3d0', background: '#ecfdf5',
-                  cursor: 'pointer', fontWeight: 500, color: '#059669',
+                  flex: 1, padding: '0.45rem 0.5rem', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '0.8rem',
+                  background: 'white', color: '#334155', cursor: 'pointer',
+                  outline: 'none',
                 }}
               >
-                + Agregar personas o sector
-              </button>
-            )}
+                <option value="" disabled>📁 Agregar sector completo...</option>
+                {allSects.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Individual search */}
+            <div style={{ position: 'relative', marginTop: '0.4rem' }}>
+              <input type="text" placeholder="🔍 Buscar colaborador por nombre..."
+                value={destSearch} onChange={e => setDestSearch(e.target.value)}
+                style={{
+                  width: '100%', padding: '0.45rem 0.5rem', borderRadius: '8px',
+                  border: '1px solid #e2e8f0', fontSize: '0.8rem',
+                  outline: 'none', boxSizing: 'border-box',
+                  transition: 'border-color 0.15s',
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = '#93c5fd'}
+                onBlur={e => setTimeout(() => e.currentTarget && (e.currentTarget.style.borderColor = '#e2e8f0'), 150)}
+              />
+              {destSearch.trim() && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                  background: 'white', borderRadius: '0 0 8px 8px',
+                  border: '1px solid #e2e8f0', borderTop: 'none',
+                  maxHeight: '160px', overflowY: 'auto',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+                }}>
+                  {allColabs
+                    .filter(c => !pendingDests.find(d => d.id === c.id) &&
+                      c.nombre_completo.toLowerCase().includes(destSearch.toLowerCase()))
+                    .slice(0, 10)
+                    .map(c => (
+                      <div key={c.id} onClick={() => addDest(c)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.4rem 0.6rem', cursor: 'pointer',
+                          fontSize: '0.8rem', borderBottom: '1px solid #f8fafc',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = '#eff6ff'}
+                        onMouseOut={e => e.currentTarget.style.background = 'white'}
+                      >
+                        <span style={{ fontWeight: 600, color: '#334155' }}>{c.nombre_completo}</span>
+                        <span style={{ fontSize: '0.65rem', color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px' }}>{c.area}</span>
+                      </div>
+                    ))}
+                  {allColabs.filter(c => !pendingDests.find(d => d.id === c.id) &&
+                    c.nombre_completo.toLowerCase().includes(destSearch.toLowerCase())).length === 0 && (
+                    <div style={{ padding: '0.6rem', fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center' }}>Sin resultados</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* FILE UPLOAD */}
