@@ -649,7 +649,6 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                               <span style={{ color: '#3b82f6' }}>Total: {formatMoney(r.total_facturado)}</span>
                             </div>
                             <div style={{
-                              maxHeight: '300px', overflowY: 'auto',
                               borderRadius: '8px', border: '1px solid #e2e8f0',
                               background: 'white',
                             }}>
