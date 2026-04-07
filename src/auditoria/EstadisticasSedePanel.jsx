@@ -118,8 +118,8 @@ export default function EstadisticasSedePanel() {
             style={{ minWidth: '120px', fontSize: '0.82rem' }}
           >
             <option value="todos">Todos los turnos</option>
-            <option value="mañana">☀️ Mañana (7-15h)</option>
-            <option value="tarde">🌙 Tarde (15h+)</option>
+            <option value="mañana">☀️ Mañana (7:30-16:30)</option>
+            <option value="tarde">🌙 Tarde (12-21hs)</option>
           </select>
         </div>
       </div>
@@ -381,14 +381,14 @@ function VistaMetricas({ metricas }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <TurnoCard
-            icon="☀️" label="Mañana (7-15h)"
+            icon="☀️" label="Mañana (7:30-16:30)"
             cantidad={metricas.por_turno.mañana?.cantidad || 0}
             importe={metricas.por_turno.mañana?.importe || 0}
             color="#f59e0b"
             total={metricas.total_operaciones}
           />
           <TurnoCard
-            icon="🌙" label="Tarde (15h+)"
+            icon="🌙" label="Tarde (12-21hs)"
             cantidad={metricas.por_turno.tarde?.cantidad || 0}
             importe={metricas.por_turno.tarde?.importe || 0}
             color="#6366f1"
@@ -485,11 +485,18 @@ function VistaMetricas({ metricas }) {
 // VISTA: DIARIA (un día específico)
 // ═══════════════════════════════════════════════════════════════
 function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
+  const [expandedUser, setExpandedUser] = useState(null);
   const totalDia = datosRaw.reduce((s, r) => s + (Number(r.total_importe) || 0), 0);
   const totalCobrado = datosRaw.reduce((s, r) => s + (Number(r.cobrado_linea) || 0), 0);
   const fechaLabel = new Date(fechaDiaria + 'T12:00:00').toLocaleDateString('es-AR', {
     weekday: 'long', day: 'numeric', month: 'long',
   });
+
+  // Operaciones de un usuario específico
+  const opsDetalle = expandedUser
+    ? datosRaw.filter(d => d.usuario_factura === expandedUser)
+        .sort((a, b) => (a.hora || '').localeCompare(b.hora || ''))
+    : [];
 
   return (
     <div>
@@ -502,7 +509,7 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
           type="date"
           className="aud-input"
           value={fechaDiaria}
-          onChange={e => setFechaDiaria(e.target.value)}
+          onChange={e => { setFechaDiaria(e.target.value); setExpandedUser(null); }}
           style={{ width: '180px', marginBottom: 0 }}
         />
         <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
@@ -539,25 +546,123 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                 <th style={thStyle}>Facturado</th>
                 <th style={thStyle}>Cobrado</th>
                 <th style={thStyle}>% del Total</th>
+                <th style={thStyle}></th>
               </tr>
             </thead>
             <tbody>
-              {resumen.map((r, idx) => (
-                <tr key={r.nombre}
-                  style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.1s' }}
-                  onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseOut={e => e.currentTarget.style.background = 'white'}
-                >
-                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: '#94a3b8' }}>{idx + 1}</td>
-                  <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b' }}>{formatUserName(r.nombre)}</td>
-                  <td style={{ ...tdStyle, textAlign: 'center' }}>{r.cantidad_operaciones}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{formatMoney(r.total_facturado)}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', color: '#10b981' }}>{formatMoney(r.total_cobrado)}</td>
-                  <td style={{ ...tdStyle, textAlign: 'center' }}>
-                    {totalDia > 0 ? ((r.total_facturado / totalDia) * 100).toFixed(1) : 0}%
-                  </td>
-                </tr>
-              ))}
+              {resumen.map((r, idx) => {
+                const isExpanded = expandedUser === r.nombre;
+                return (
+                  <React.Fragment key={r.nombre}>
+                    <tr
+                      style={{
+                        borderBottom: isExpanded ? 'none' : '1px solid #f1f5f9',
+                        transition: 'background 0.1s',
+                        background: isExpanded ? '#f0f9ff' : 'white',
+                      }}
+                      onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = 'white'; }}
+                    >
+                      <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: '#94a3b8' }}>{idx + 1}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b' }}>{formatUserName(r.nombre)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'center' }}>{r.cantidad_operaciones}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{formatMoney(r.total_facturado)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#10b981' }}>{formatMoney(r.total_cobrado)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        {totalDia > 0 ? ((r.total_facturado / totalDia) * 100).toFixed(1) : 0}%
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        <button
+                          onClick={() => setExpandedUser(isExpanded ? null : r.nombre)}
+                          style={{
+                            padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none',
+                            fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                            background: isExpanded ? '#3b82f6' : '#eff6ff',
+                            color: isExpanded ? 'white' : '#3b82f6',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {isExpanded ? '✕ Cerrar' : '🔍 Ver Detalle'}
+                        </button>
+                      </td>
+                    </tr>
+                    {/* Expanded detail rows */}
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 0 }}>
+                          <div style={{
+                            background: '#f8fafc', padding: '0.75rem 1rem',
+                            borderBottom: '2px solid #bfdbfe',
+                            animation: 'fadeIn 0.2s ease',
+                          }}>
+                            <div style={{
+                              fontSize: '0.72rem', fontWeight: 700, color: '#64748b',
+                              textTransform: 'uppercase', marginBottom: '0.5rem',
+                              display: 'flex', justifyContent: 'space-between',
+                            }}>
+                              <span>📋 Detalle de {r.cantidad_operaciones} operaciones — {formatUserName(r.nombre)}</span>
+                              <span style={{ color: '#3b82f6' }}>Total: {formatMoney(r.total_facturado)}</span>
+                            </div>
+                            <div style={{
+                              maxHeight: '300px', overflowY: 'auto',
+                              borderRadius: '8px', border: '1px solid #e2e8f0',
+                              background: 'white',
+                            }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                <thead>
+                                  <tr style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
+                                    <th style={thDetailStyle}>Hora</th>
+                                    <th style={thDetailStyle}>Turno</th>
+                                    <th style={{ ...thDetailStyle, textAlign: 'left' }}>Paciente</th>
+                                    <th style={{ ...thDetailStyle, textAlign: 'left' }}>Concepto</th>
+                                    <th style={{ ...thDetailStyle, textAlign: 'left' }}>Familia</th>
+                                    <th style={thDetailStyle}>Importe</th>
+                                    <th style={thDetailStyle}>Cobrado</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {opsDetalle.map((op, i) => (
+                                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ ...tdDetailStyle, textAlign: 'center', color: '#64748b' }}>
+                                        {op.hora ? op.hora.substring(0, 5) : '—'}
+                                      </td>
+                                      <td style={{ ...tdDetailStyle, textAlign: 'center' }}>
+                                        <span style={{
+                                          padding: '0.1rem 0.4rem', borderRadius: '4px',
+                                          fontSize: '0.65rem', fontWeight: 600,
+                                          background: op.turno === 'mañana' ? '#fef3c7' : '#e0e7ff',
+                                          color: op.turno === 'mañana' ? '#d97706' : '#4f46e5',
+                                        }}>
+                                          {op.turno === 'mañana' ? '☀️' : '🌙'}
+                                        </span>
+                                      </td>
+                                      <td style={{ ...tdDetailStyle, color: '#334155', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {op.paciente || '—'}
+                                      </td>
+                                      <td style={{ ...tdDetailStyle, color: '#475569', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {op.concepto || '—'}
+                                      </td>
+                                      <td style={{ ...tdDetailStyle, color: '#64748b' }}>
+                                        {op.familia || '—'}
+                                      </td>
+                                      <td style={{ ...tdDetailStyle, textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>
+                                        {formatMoney(Number(op.total_importe) || 0)}
+                                      </td>
+                                      <td style={{ ...tdDetailStyle, textAlign: 'right', color: '#10b981' }}>
+                                        {formatMoney(Number(op.cobrado_linea) || 0)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr style={{ background: '#f0f9ff', fontWeight: 700 }}>
@@ -567,6 +672,7 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
                 <td style={{ ...tdStyle, textAlign: 'right', color: '#3b82f6' }}>{formatMoney(totalDia)}</td>
                 <td style={{ ...tdStyle, textAlign: 'right', color: '#10b981' }}>{formatMoney(totalCobrado)}</td>
                 <td style={{ ...tdStyle, textAlign: 'center' }}>100%</td>
+                <td style={tdStyle}></td>
               </tr>
             </tfoot>
           </table>
@@ -629,4 +735,14 @@ const thStyle = {
 
 const tdStyle = {
   padding: '0.6rem 0.75rem',
+};
+
+const thDetailStyle = {
+  padding: '0.4rem 0.6rem', fontWeight: 700, fontSize: '0.68rem',
+  color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em',
+  textAlign: 'center',
+};
+
+const tdDetailStyle = {
+  padding: '0.35rem 0.6rem',
 };

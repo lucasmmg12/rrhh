@@ -774,6 +774,12 @@ body {
   .aud-content {
     padding: 1.5rem 2rem;
   }
+
+  /* Stats panel uses full width on desktop */
+  .aud-content.aud-content-wide {
+    max-width: 100%;
+    padding: 1.5rem 2.5rem;
+  }
   
   .aud-checklist-item {
     padding: 1rem 1.25rem;

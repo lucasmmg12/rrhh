@@ -139,7 +139,7 @@ export default function AuditoriaApp(props) {
       {view === 'new' && <NewAuditView onSaved={handleBack} currentUser={user} />}
       {view === 'detail' && selectedAudit && <DetailView audit={selectedAudit} />}
       {view === 'stats' && (
-        <div className="aud-content aud-animate-in">
+        <div className="aud-content aud-content-wide aud-animate-in">
           <EstadisticasSedePanel />
         </div>
       )}
