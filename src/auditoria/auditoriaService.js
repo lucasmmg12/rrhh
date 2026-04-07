@@ -10,6 +10,7 @@ export const SECTORES = [
   { value: 'santa_fe_sector_2', label: 'Sede Santa Fe - Sector 2' },
   { value: 'dxi', label: 'DXI (Mamografía y Densitometría)' },
   { value: 'citologia', label: 'Citología' },
+  { value: 'seguridad_patrimonial', label: 'Seguridad Patrimonial' },
 ];
 
 // ─── CHECKLIST TEMPLATE ─────────────────────────────────────────
