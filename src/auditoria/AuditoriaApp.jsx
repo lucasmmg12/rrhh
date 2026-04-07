@@ -30,13 +30,14 @@ import {
   obtenerColaboradoresPorArea,
   obtenerTodosColaboradores,
 } from './auditoriaService';
+import EstadisticasSedePanel from './EstadisticasSedePanel';
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 export default function AuditoriaApp(props) {
   const { user } = useAuth();
-  const [view, setView] = useState('home'); // home | new | detail
+  const [view, setView] = useState('home'); // home | new | detail | stats
   const [selectedAudit, setSelectedAudit] = useState(null);
 
   const handleNewAudit = () => setView('new');
@@ -93,20 +94,43 @@ export default function AuditoriaApp(props) {
       )}
 
       {/* Embedded top actions */}
-      {props.embedded && view === 'home' && (
+      {props.embedded && (view === 'home' || view === 'stats') && (
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--neutral-200, #E2E8F0)',
           background: 'white',
         }}>
-          <button className="aud-header-btn primary" onClick={handleNewAudit}
-            style={{
-              padding: '0.5rem 1rem', borderRadius: '8px',
-              background: 'var(--primary-500, #1E5FA6)', color: 'white',
-              fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-            }}>
-            ✚ Nueva Auditoría
-          </button>
+          <div style={{ display: 'flex', gap: '0' }}>
+            {[
+              { id: 'home', icon: '📋', label: 'Seguimiento' },
+              { id: 'stats', icon: '📊', label: 'Estadísticas' },
+            ].map(tab => (
+              <button key={tab.id}
+                onClick={() => { setView(tab.id); setSelectedAudit(null); }}
+                style={{
+                  padding: '0.5rem 1rem', border: 'none', cursor: 'pointer',
+                  fontSize: '0.85rem', fontWeight: 600, background: 'none',
+                  borderBottom: (view === tab.id || (tab.id === 'home' && (view === 'new' || view === 'detail')))
+                    ? '2px solid var(--primary-500, #1E5FA6)' : '2px solid transparent',
+                  color: (view === tab.id || (tab.id === 'home' && (view === 'new' || view === 'detail')))
+                    ? 'var(--primary-500, #1E5FA6)' : '#94a3b8',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+          {(view === 'home') && (
+            <button className="aud-header-btn primary" onClick={handleNewAudit}
+              style={{
+                padding: '0.5rem 1rem', borderRadius: '8px',
+                background: 'var(--primary-500, #1E5FA6)', color: 'white',
+                fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+              }}>
+              ✚ Nueva Auditoría
+            </button>
+          )}
         </div>
       )}
 
@@ -114,6 +138,11 @@ export default function AuditoriaApp(props) {
       {view === 'home' && <HomeView onNew={handleNewAudit} onView={handleViewAudit} />}
       {view === 'new' && <NewAuditView onSaved={handleBack} currentUser={user} />}
       {view === 'detail' && selectedAudit && <DetailView audit={selectedAudit} />}
+      {view === 'stats' && (
+        <div className="aud-content aud-animate-in">
+          <EstadisticasSedePanel />
+        </div>
+      )}
     </div>
   );
 }
