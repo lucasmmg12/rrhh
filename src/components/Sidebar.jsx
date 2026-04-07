@@ -169,10 +169,10 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
             <button
               className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
               onClick={() => onViewChange('auditoria')}
-              title={collapsed ? 'Auditoría' : undefined}
+              title={collapsed ? 'Seguimiento de Sede' : undefined}
             >
               <ClipboardCheck size={20} className="sidebar__item-icon" />
-              {!collapsed && <span className="sidebar__item-label">Auditoría en Terreno</span>}
+              {!collapsed && <span className="sidebar__item-label">Seguimiento y Acompañamiento de Sede</span>}
               {isActive && <div className="sidebar__item-indicator" />}
             </button>
           );

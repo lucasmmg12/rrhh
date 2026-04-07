@@ -65,7 +65,7 @@ export default function AuditoriaApp(props) {
           )}
           <img src="/logosanatorio.png" alt="SA" />
           <div className="aud-header-text">
-            <h1>Auditoría en Terreno</h1>
+            <h1>Seguimiento y Acompañamiento de Sede</h1>
             <span>Sede Santa Fe</span>
           </div>
           {view === 'home' && (

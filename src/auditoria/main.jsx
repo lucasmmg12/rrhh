@@ -6,7 +6,7 @@ import './auditoria.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <AuthGate moduleName="Auditoría en Terreno">
+    <AuthGate moduleName="Seguimiento y Acompañamiento de Sede">
       <AuditoriaApp />
     </AuthGate>
   </React.StrictMode>

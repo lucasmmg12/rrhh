@@ -59,7 +59,7 @@ function HomePanel() {
     },
     {
       id: 'auditoria',
-      title: 'Auditoría en Terreno',
+      title: 'Seguimiento y Acompañamiento de Sede',
       description: 'Checklist de inspección en campo',
       icon: '✅',
       color: '#059669',
@@ -197,7 +197,7 @@ export default function RRHHApp() {
     organigrama: 'Organigrama Institucional',
     calendario: 'Agenda de Salas',
     fichadas: 'Control de Fichadas',
-    auditoria: 'Auditoría en Terreno',
+    auditoria: 'Seguimiento y Acompañamiento de Sede',
     efemerides: 'Efemérides',
     config: 'Configuración',
   };
