@@ -119,3 +119,80 @@ export async function obtenerProximosCumpleaños(dias = 30) {
     return ca - cb;
   });
 }
+
+// ─── ATTACHMENTS ───
+
+/**
+ * Obtener adjuntos de una efeméride
+ */
+export async function getAdjuntos(efemeride_id) {
+  const { data, error } = await supabase
+    .from('rrhh_efemerides_adjuntos')
+    .select('*')
+    .eq('efemeride_id', efemeride_id)
+    .order('uploaded_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Subir archivo adjunto a una efeméride
+ */
+export async function uploadAdjunto(efemeride_id, file) {
+  const filePath = `efemerides/${efemeride_id}/${Date.now()}_${file.name}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('efemerides-attachments')
+    .upload(filePath, file);
+  if (uploadError) throw uploadError;
+
+  const { data: meta, error: metaError } = await supabase
+    .from('rrhh_efemerides_adjuntos')
+    .insert({
+      efemeride_id,
+      file_name: file.name,
+      file_type: file.type,
+      file_size: file.size,
+      storage_path: filePath,
+    })
+    .select()
+    .single();
+  if (metaError) throw metaError;
+  return meta;
+}
+
+/**
+ * Eliminar adjunto
+ */
+export async function deleteAdjunto(adjunto) {
+  await supabase.storage
+    .from('efemerides-attachments')
+    .remove([adjunto.storage_path]);
+
+  const { error } = await supabase
+    .from('rrhh_efemerides_adjuntos')
+    .delete()
+    .eq('id', adjunto.id);
+  if (error) throw error;
+}
+
+/**
+ * URL pública de un adjunto
+ */
+export function getAdjuntoUrl(storagePath) {
+  const { data } = supabase.storage
+    .from('efemerides-attachments')
+    .getPublicUrl(storagePath, { download: true });
+  return data?.publicUrl;
+}
+
+/**
+ * URL firmada para descarga con nombre original
+ */
+export async function getSignedDownloadUrl(storagePath, fileName) {
+  const { data, error } = await supabase.storage
+    .from('efemerides-attachments')
+    .createSignedUrl(storagePath, 3600, { download: fileName || true });
+  if (error) throw error;
+  return data?.signedUrl;
+}

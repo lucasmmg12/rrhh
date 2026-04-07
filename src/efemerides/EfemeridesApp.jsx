@@ -4,6 +4,11 @@ import {
   crearEfemeride,
   eliminarEfemeride,
   obtenerProximosCumpleaños,
+  getAdjuntos,
+  uploadAdjunto,
+  deleteAdjunto,
+  getSignedDownloadUrl,
+  getAdjuntoUrl,
 } from './efemeridesService';
 
 // ─── CONSTANTS ───
@@ -17,6 +22,8 @@ const TIPO_CONFIG = {
   institucional:  { label: 'Institucional', color: '#7c3aed', bg: '#f5f3ff', icon: '🏥' },
   otro:           { label: 'Otro',          color: '#64748b', bg: '#f8fafc', icon: '📌' },
 };
+
+const COLOR_PALETTE = ['#0284c7', '#7c3aed', '#0ea5e9', '#dc2626', '#f59e0b', '#e11d48', '#10b981', '#f97316', '#64748b', '#6366f1'];
 
 const toDateKey = (date) => {
   const y = date.getFullYear();
@@ -88,9 +95,17 @@ export default function EfemeridesApp({ embedded = false }) {
   }, [efemerides, filter]);
 
   // ─── CREATE EFEMERIDE ───
-  const handleCreate = async (data) => {
+  const handleCreate = async (data, pendingFiles = []) => {
     try {
-      await crearEfemeride(data);
+      const created = await crearEfemeride(data);
+      // Upload pending files after creation
+      for (const file of pendingFiles) {
+        try {
+          await uploadAdjunto(created.id, file);
+        } catch (err) {
+          console.error('Failed to upload attachment:', file.name, err);
+        }
+      }
       setShowForm(false);
       setSelectedDay(null);
       loadData();
@@ -203,8 +218,8 @@ export default function EfemeridesApp({ embedded = false }) {
                       return (
                         <div key={j} style={{
                           fontSize: '0.6rem', padding: '1px 4px',
-                          borderRadius: '4px', background: cfg.bg,
-                          color: cfg.color, fontWeight: 600,
+                          borderRadius: '4px', background: (ev.color || cfg.color) + '18',
+                          color: ev.color || cfg.color, fontWeight: 600,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           lineHeight: 1.4,
                         }}>
@@ -232,63 +247,12 @@ export default function EfemeridesApp({ embedded = false }) {
         }}>
           {/* Selected day detail */}
           {selectedDay && (
-            <div style={{ padding: '1rem', borderBottom: '1px solid var(--neutral-100, #f1f5f9)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--neutral-800)', margin: 0 }}>
-                  {new Date(selectedDay + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </h3>
-                <button onClick={() => { setShowForm(true); }} style={{
-                  ...btnSmall, fontSize: '0.7rem', background: 'var(--primary-500, #1E5FA6)', color: 'white',
-                }}>+ Agregar</button>
-              </div>
-
-              {(eventsByDate[selectedDay] || []).length === 0 ? (
-                <p style={{ fontSize: '0.78rem', color: 'var(--neutral-400)', margin: '0.5rem 0', textAlign: 'center' }}>
-                  Sin efemérides
-                </p>
-              ) : (
-                (eventsByDate[selectedDay] || []).map(ev => {
-                  const cfg = TIPO_CONFIG[ev.tipo] || TIPO_CONFIG.otro;
-                  return (
-                    <div key={ev.id} style={{
-                      padding: '0.65rem', marginBottom: '0.4rem',
-                      borderRadius: '8px', border: `1px solid ${cfg.color}20`,
-                      background: cfg.bg,
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: cfg.color }}>
-                            {cfg.icon} {ev.titulo}
-                          </div>
-                          {ev.descripcion && (
-                            <p style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', margin: '0.2rem 0 0' }}>
-                              {ev.descripcion}
-                            </p>
-                          )}
-                          <span style={{
-                            fontSize: '0.6rem', padding: '1px 6px', borderRadius: '8px',
-                            background: cfg.color + '15', color: cfg.color, fontWeight: 600,
-                            display: 'inline-block', marginTop: '0.25rem',
-                          }}>{cfg.label}</span>
-                          {ev.obsequio && (
-                            <span style={{
-                              fontSize: '0.6rem', padding: '1px 6px', borderRadius: '8px',
-                              background: '#fef3c7', color: '#92400e', fontWeight: 600,
-                              display: 'inline-block', marginTop: '0.25rem', marginLeft: '0.25rem',
-                            }}>🎁 Obsequio</span>
-                          )}
-                        </div>
-                        <button onClick={() => handleDelete(ev.id)} style={{
-                          border: 'none', background: 'none', cursor: 'pointer',
-                          fontSize: '0.8rem', color: 'var(--neutral-400)',
-                          padding: '2px', lineHeight: 1,
-                        }}>✕</button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <SelectedDayPanel
+              selectedDay={selectedDay}
+              events={eventsByDate[selectedDay] || []}
+              onAdd={() => setShowForm(true)}
+              onDelete={handleDelete}
+            />
           )}
 
           {/* Upcoming birthdays */}
@@ -380,6 +344,159 @@ export default function EfemeridesApp({ embedded = false }) {
   );
 }
 
+// ─── SELECTED DAY PANEL (with attachments) ───
+function SelectedDayPanel({ selectedDay, events, onAdd, onDelete }) {
+  const [attachmentsMap, setAttachmentsMap] = useState({});
+  const [uploading, setUploading] = useState(null);
+
+  // Load attachments for visible events
+  useEffect(() => {
+    if (events.length === 0) return;
+    const loadAll = async () => {
+      const map = {};
+      for (const ev of events) {
+        try { map[ev.id] = await getAdjuntos(ev.id); } catch { map[ev.id] = []; }
+      }
+      setAttachmentsMap(map);
+    };
+    loadAll();
+  }, [events]);
+
+  const handleUpload = async (evId, e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setUploading(evId);
+    for (const file of files) {
+      try {
+        const att = await uploadAdjunto(evId, file);
+        setAttachmentsMap(prev => ({ ...prev, [evId]: [att, ...(prev[evId] || [])] }));
+      } catch (err) {
+        alert('Error al subir: ' + file.name);
+      }
+    }
+    setUploading(null);
+    e.target.value = '';
+  };
+
+  const handleDeleteAtt = async (evId, att) => {
+    try {
+      await deleteAdjunto(att);
+      setAttachmentsMap(prev => ({ ...prev, [evId]: (prev[evId] || []).filter(a => a.id !== att.id) }));
+    } catch (err) {
+      console.error('Delete attachment failed:', err);
+    }
+  };
+
+  const handleDownload = async (att) => {
+    try {
+      const url = await getSignedDownloadUrl(att.storage_path, att.file_name);
+      window.open(url, '_blank');
+    } catch {
+      window.open(getAdjuntoUrl(att.storage_path), '_blank');
+    }
+  };
+
+  return (
+    <div style={{ padding: '1rem', borderBottom: '1px solid var(--neutral-100, #f1f5f9)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--neutral-800)', margin: 0 }}>
+          {new Date(selectedDay + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </h3>
+        <button onClick={onAdd} style={{
+          ...btnSmall, fontSize: '0.7rem', background: 'var(--primary-500, #1E5FA6)', color: 'white',
+        }}>+ Agregar</button>
+      </div>
+
+      {events.length === 0 ? (
+        <p style={{ fontSize: '0.78rem', color: 'var(--neutral-400)', margin: '0.5rem 0', textAlign: 'center' }}>
+          Sin efemérides
+        </p>
+      ) : (
+        events.map(ev => {
+          const cfg = TIPO_CONFIG[ev.tipo] || TIPO_CONFIG.otro;
+          const atts = attachmentsMap[ev.id] || [];
+          return (
+            <div key={ev.id} style={{
+              padding: '0.65rem', marginBottom: '0.4rem',
+              borderRadius: '8px', border: `1px solid ${ev.color || cfg.color}20`,
+              background: cfg.bg,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    {ev.color && (
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: ev.color, flexShrink: 0 }} />
+                    )}
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: ev.color || cfg.color }}>
+                      {ev.icono || cfg.icon} {ev.titulo}
+                    </span>
+                  </div>
+                  {ev.descripcion && (
+                    <p style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', margin: '0.2rem 0 0' }}>
+                      {ev.descripcion}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                    <span style={{
+                      fontSize: '0.6rem', padding: '1px 6px', borderRadius: '8px',
+                      background: (ev.color || cfg.color) + '15', color: ev.color || cfg.color, fontWeight: 600,
+                    }}>{cfg.label}</span>
+                    {ev.obsequio && (
+                      <span style={{
+                        fontSize: '0.6rem', padding: '1px 6px', borderRadius: '8px',
+                        background: '#fef3c7', color: '#92400e', fontWeight: 600,
+                      }}>🎁 Obsequio</span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => onDelete(ev.id)} style={{
+                  border: 'none', background: 'none', cursor: 'pointer',
+                  fontSize: '0.8rem', color: 'var(--neutral-400)',
+                  padding: '2px', lineHeight: 1,
+                }}>✕</button>
+              </div>
+
+              {/* Attachments */}
+              <div style={{ marginTop: '0.4rem' }}>
+                {atts.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '0.3rem' }}>
+                    {atts.map(att => (
+                      <div key={att.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '0.3rem',
+                        fontSize: '0.68rem', padding: '2px 4px', borderRadius: '4px',
+                        background: 'rgba(255,255,255,0.7)',
+                      }}>
+                        <span>📎</span>
+                        <a href="#" onClick={(e) => { e.preventDefault(); handleDownload(att); }}
+                          style={{ color: '#0284c7', textDecoration: 'none', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {att.file_name}
+                        </a>
+                        <button onClick={() => handleDeleteAtt(ev.id, att)} style={{
+                          border: 'none', background: 'none', cursor: 'pointer',
+                          fontSize: '0.65rem', color: '#dc2626', padding: '0 2px', lineHeight: 1,
+                        }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                  fontSize: '0.65rem', color: '#0284c7', cursor: 'pointer',
+                  fontWeight: 600, padding: '2px 6px', borderRadius: '4px',
+                  background: '#eff6ff', border: '1px solid #bfdbfe',
+                }}>
+                  {uploading === ev.id ? '⏳ Subiendo...' : '📎 Adjuntar'}
+                  <input type="file" hidden multiple onChange={(e) => handleUpload(ev.id, e)} disabled={uploading === ev.id} />
+                </label>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ─── CREATE MODAL ───
 function CreateModal({ date, onClose, onCreate }) {
   const [form, setForm] = useState({
@@ -393,13 +510,24 @@ function CreateModal({ date, onClose, onCreate }) {
     icono: '📌',
     notificar_whatsapp: false,
   });
+  const [pendingFiles, setPendingFiles] = useState([]);
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.titulo.trim()) return alert('El título es obligatorio');
-    onCreate(form);
+    onCreate(form, pendingFiles);
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length) setPendingFiles(prev => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const removePendingFile = (idx) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
   return (
@@ -410,8 +538,9 @@ function CreateModal({ date, onClose, onCreate }) {
     }} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} style={{
         background: 'white', borderRadius: '16px', padding: '1.5rem',
-        width: '90%', maxWidth: '440px',
+        width: '90%', maxWidth: '480px',
         boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)',
+        maxHeight: '90vh', overflowY: 'auto',
       }}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--neutral-800)', margin: '0 0 1.25rem' }}>
           Nueva Efeméride
@@ -450,7 +579,28 @@ function CreateModal({ date, onClose, onCreate }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '1.5rem' }}>
+          {/* COLOR PICKER */}
+          <div>
+            <label style={labelStyle}>Color</label>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              {COLOR_PALETTE.map(c => (
+                <div
+                  key={c}
+                  onClick={() => update('color', c)}
+                  style={{
+                    width: 28, height: 28, borderRadius: '8px',
+                    background: c, cursor: 'pointer',
+                    border: form.color === c ? '3px solid #1e293b' : '2px solid transparent',
+                    boxShadow: form.color === c ? '0 0 0 2px white, 0 0 0 4px ' + c : 'none',
+                    transition: 'all 0.15s',
+                    transform: form.color === c ? 'scale(1.15)' : 'scale(1)',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.recurrente} onChange={e => update('recurrente', e.target.checked)} />
               Se repite cada año
@@ -462,6 +612,48 @@ function CreateModal({ date, onClose, onCreate }) {
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={form.notificar_whatsapp} onChange={e => update('notificar_whatsapp', e.target.checked)} />
               📱 Notificar WA
+            </label>
+          </div>
+
+          {/* FILE UPLOAD */}
+          <div>
+            <label style={labelStyle}>📎 Archivos adjuntos</label>
+            {pendingFiles.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '0.4rem' }}>
+                {pendingFiles.map((file, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.3rem 0.5rem', borderRadius: '6px',
+                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                    fontSize: '0.78rem',
+                  }}>
+                    <span>📄</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>
+                      {file.name}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: '#94a3b8', flexShrink: 0 }}>
+                      {(file.size / 1024).toFixed(0)} KB
+                    </span>
+                    <button type="button" onClick={() => removePendingFile(idx)} style={{
+                      border: 'none', background: 'none', cursor: 'pointer',
+                      color: '#dc2626', fontSize: '0.75rem', padding: '0 2px', lineHeight: 1,
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+              padding: '0.4rem 0.75rem', borderRadius: '8px',
+              border: '1px dashed #cbd5e1', background: '#f8fafc',
+              cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
+              color: '#64748b', transition: 'all 0.15s',
+            }}
+              onMouseOver={e => { e.currentTarget.style.borderColor = '#0284c7'; e.currentTarget.style.color = '#0284c7'; }}
+              onMouseOut={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
+            >
+              + Agregar archivo
+              <input type="file" hidden multiple onChange={handleFileSelect} />
             </label>
           </div>
         </div>
