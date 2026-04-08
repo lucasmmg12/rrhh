@@ -31,6 +31,7 @@ import {
   obtenerTodosColaboradores,
 } from './auditoriaService';
 import EstadisticasSedePanel from './EstadisticasSedePanel';
+import ControlHorarioApp from '../controlhorario/ControlHorarioApp';
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN APP
@@ -104,6 +105,7 @@ export default function AuditoriaApp(props) {
             {[
               { id: 'home', icon: '📋', label: 'Seguimiento' },
               { id: 'stats', icon: '📊', label: 'Estadísticas' },
+              { id: 'control', icon: '⏰', label: 'Control Horario' },
             ].map(tab => (
               <button key={tab.id}
                 onClick={() => { setView(tab.id); setSelectedAudit(null); }}
@@ -141,6 +143,11 @@ export default function AuditoriaApp(props) {
       {view === 'stats' && (
         <div className="aud-content aud-content-wide aud-animate-in">
           <EstadisticasSedePanel />
+        </div>
+      )}
+      {view === 'control' && (
+        <div className="aud-content aud-content-wide aud-animate-in">
+          <ControlHorarioApp onBack={() => setView('home')} />
         </div>
       )}
     </div>
