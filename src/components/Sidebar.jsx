@@ -136,7 +136,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
         {[
           { id: 'organigrama', label: 'Organigrama', icon: Building2 },
           { id: 'calendario', label: 'Agenda de Salas', icon: Calendar },
-          { id: 'fichadas', label: 'Control de Fichadas', icon: Clock },
+          { id: 'controlhorario', label: 'Control de Horarios', icon: Clock },
         ].map(item => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
