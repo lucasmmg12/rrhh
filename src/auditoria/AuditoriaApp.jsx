@@ -105,7 +105,7 @@ export default function AuditoriaApp(props) {
             {[
               { id: 'home', icon: '📋', label: 'Seguimiento' },
               { id: 'stats', icon: '📊', label: 'Estadísticas' },
-              { id: 'control', icon: '⏰', label: 'Control Horario' },
+              { id: 'controlhorario', icon: '⏰', label: 'Control de Horarios' },
             ].map(tab => (
               <button key={tab.id}
                 onClick={() => { setView(tab.id); setSelectedAudit(null); }}
