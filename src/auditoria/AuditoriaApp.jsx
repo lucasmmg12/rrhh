@@ -20,6 +20,7 @@ function getAuditorName(user) {
 import {
   SECTORES,
   CHECKLIST_TEMPLATE,
+  AUXILIARES_HOTELERIA,
   MAX_PUNTOS,
   calcularResultado,
   crearAuditoria,
@@ -418,6 +419,7 @@ function NewAuditView({ onSaved, currentUser }) {
     sede: 'Santa Fe',
     sector: '',
     responsable_presente: '',
+    auxiliar_hoteleria: '',
     auditor_nombre: getAuditorName(currentUser),
   });
 
@@ -833,6 +835,54 @@ function StepDatosGenerales({ general, setGeneral, colaboradores }) {
               Máximo 2 responsables alcanzado
             </div>
           )}
+        </div>
+
+        {/* Auxiliar de Hotelería selector */}
+        <div className="aud-field">
+          <label className="aud-label">🧹 Auxiliar de Hotelería presente</label>
+
+          {/* Selected auxiliar as pill */}
+          {general.auxiliar_hoteleria && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '0.45rem',
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.3rem 0.65rem', borderRadius: '20px',
+                background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
+                border: '1px solid #86efac', fontSize: '0.82rem',
+                fontWeight: 600, color: '#166534',
+              }}>
+                🧹 {general.auxiliar_hoteleria}
+                <button onClick={() => update('auxiliar_hoteleria', '')} style={{
+                  border: 'none', background: 'none', cursor: 'pointer',
+                  color: '#86efac', fontSize: '0.75rem', padding: '0 2px',
+                  lineHeight: 1, transition: 'color 0.15s',
+                }}
+                  onMouseOver={e => e.currentTarget.style.color = '#dc2626'}
+                  onMouseOut={e => e.currentTarget.style.color = '#86efac'}
+                >✕</button>
+              </span>
+            </div>
+          )}
+
+          {/* Auxiliar select dropdown */}
+          {!general.auxiliar_hoteleria && (
+            <select
+              className="aud-select"
+              value=""
+              onChange={e => update('auxiliar_hoteleria', e.target.value)}
+            >
+              <option value="">Seleccionar auxiliar...</option>
+              {AUXILIARES_HOTELERIA.map(aux => (
+                <option key={aux} value={aux}>{aux}</option>
+              ))}
+            </select>
+          )}
+
+          <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+            Seleccioná la auxiliar asignada al sector durante la ronda
+          </div>
         </div>
 
         <div className="aud-field">

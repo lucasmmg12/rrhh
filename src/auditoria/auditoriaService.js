@@ -55,9 +55,54 @@ export const CHECKLIST_TEMPLATE = [
       { key: 'carteleria', label: 'Cartelería: Visible y actualizada' },
     ],
   },
+  {
+    categoria: 'hoteleria',
+    label: 'Auxiliares de Hotelería',
+    icon: '🧹',
+    items: [
+      { key: 'hot_presencia', label: 'Presencia de auxiliar en el sector' },
+      { key: 'hot_limpieza_sala', label: 'Limpieza de salas de espera' },
+      { key: 'hot_limpieza_consultorios', label: 'Limpieza de consultorios' },
+      { key: 'hot_limpieza_banios', label: 'Limpieza de baños' },
+      { key: 'hot_reposicion', label: 'Reposición de insumos (papel, jabón, alcohol)' },
+      { key: 'hot_residuos', label: 'Retiro de residuos en tiempo y forma' },
+      { key: 'hot_uniforme', label: 'Uniforme: Completo e identificado' },
+      { key: 'hot_actitud', label: 'Actitud proactiva y disposición al servicio' },
+    ],
+  },
 ];
 
-export const MAX_PUNTOS = 24; // 12 items × 2 points max
+// ─── AUXILIARES DE HOTELERÍA (rotativas entre sectores) ─────────
+export const AUXILIARES_HOTELERIA = [
+  'Aguirre, María L.',
+  'Álvarez, Lucía',
+  'Benítez, Carolina',
+  'Cabrera, Romina',
+  'Castro, Natalia',
+  'Díaz, Paola',
+  'Fernández, Analía',
+  'García, Cintia',
+  'Gómez, Laura',
+  'González, Silvia',
+  'Gutiérrez, Valeria',
+  'Hernández, Mónica',
+  'López, Andrea',
+  'Martínez, Gabriela',
+  'Medina, Florencia',
+  'Molina, Yanina',
+  'Morales, Patricia',
+  'Núñez, Daniela',
+  'Pérez, Marcela',
+  'Ramírez, Sandra',
+  'Rodríguez, Mariela',
+  'Romero, Claudia',
+  'Ruiz, Cecilia',
+  'Sánchez, Verónica',
+  'Torres, Alejandra',
+];
+
+// 12 items originales (4 categorías × 3 items) + 8 items hotelería = 20 items × 2 pts = 40
+export const MAX_PUNTOS = 40;
 
 // ─── SCORING ────────────────────────────────────────────────────
 export function calcularResultado(items) {
@@ -80,6 +125,7 @@ export async function crearAuditoria(auditoria, items, planes) {
       sede: auditoria.sede,
       sector: auditoria.sector,
       responsable_presente: auditoria.responsable_presente,
+      auxiliar_hoteleria: auditoria.auxiliar_hoteleria || null,
       auditor_nombre: auditoria.auditor_nombre,
       total_puntos: auditoria.total_puntos,
       max_puntos: MAX_PUNTOS,
