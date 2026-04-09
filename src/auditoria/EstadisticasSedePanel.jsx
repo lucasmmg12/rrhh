@@ -25,15 +25,52 @@ const CHART_COLORS = [
   '#14b8a6', '#e11d48',
 ];
 
-function getMonthRange() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
+// ── Period helpers ──
+function getToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getWeekRange(refDate) {
+  const d = new Date(refDate + 'T12:00:00');
+  const day = d.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diffToMon);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
   return {
-    desde: `${y}-${m}-01`,
-    hasta: `${y}-${m}-${String(new Date(y, now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`,
-    label: new Date(y, now.getMonth()).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }),
+    desde: mon.toISOString().slice(0, 10),
+    hasta: sun.toISOString().slice(0, 10),
   };
+}
+
+function getMonthRange(refDate) {
+  const d = new Date(refDate + 'T12:00:00');
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  return {
+    desde: `${y}-${String(m + 1).padStart(2, '0')}-01`,
+    hasta: `${y}-${String(m + 1).padStart(2, '0')}-${String(new Date(y, m + 1, 0).getDate()).padStart(2, '0')}`,
+  };
+}
+
+function formatPeriodLabel(tipo, desde, hasta) {
+  const opts = { day: 'numeric', month: 'short', year: 'numeric' };
+  const optsShort = { day: 'numeric', month: 'short' };
+  const d = new Date(desde + 'T12:00:00');
+  const h = new Date(hasta + 'T12:00:00');
+
+  if (tipo === 'dia') {
+    return d.toLocaleDateString('es-AR', { weekday: 'long', ...opts });
+  }
+  if (tipo === 'semana') {
+    return `${d.toLocaleDateString('es-AR', optsShort)} — ${h.toLocaleDateString('es-AR', opts)}`;
+  }
+  if (tipo === 'mes') {
+    return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  }
+  // rango
+  return `${d.toLocaleDateString('es-AR', optsShort)} — ${h.toLocaleDateString('es-AR', opts)}`;
 }
 
 export default function EstadisticasSedePanel() {
@@ -41,13 +78,26 @@ export default function EstadisticasSedePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [turnoFilter, setTurnoFilter] = useState('todos');
-  const [fechaDiaria, setFechaDiaria] = useState(new Date().toISOString().slice(0, 10));
-  const [vista, setVista] = useState('recepcionistas'); // 'recepcionistas' | 'metricas'
+  const [vista, setVista] = useState('recepcionistas');
   const [recepcionistaDetalle, setRecepcionistaDetalle] = useState(null);
 
-  const { desde, hasta, label: mesLabel } = useMemo(getMonthRange, []);
+  // ── Period filter state ──
+  const [periodoTipo, setPeriodoTipo] = useState('dia'); // 'dia' | 'semana' | 'mes' | 'rango'
+  const [fechaRef, setFechaRef] = useState(getToday());
+  const [rangoDesde, setRangoDesde] = useState(getToday());
+  const [rangoHasta, setRangoHasta] = useState(getToday());
 
-  // Load data
+  // Compute actual date range based on period type
+  const { desde, hasta } = useMemo(() => {
+    if (periodoTipo === 'dia') return { desde: fechaRef, hasta: fechaRef };
+    if (periodoTipo === 'semana') return getWeekRange(fechaRef);
+    if (periodoTipo === 'mes') return getMonthRange(fechaRef);
+    return { desde: rangoDesde, hasta: rangoHasta };
+  }, [periodoTipo, fechaRef, rangoDesde, rangoHasta]);
+
+  const periodoLabel = useMemo(() => formatPeriodLabel(periodoTipo, desde, hasta), [periodoTipo, desde, hasta]);
+
+  // Load data for the computed range
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -60,11 +110,26 @@ export default function EstadisticasSedePanel() {
   const resumenRecepcionistas = useMemo(() => calcularResumenPorRecepcionista(datos), [datos]);
   const metricas = useMemo(() => calcularMetricasOperativas(datos), [datos]);
 
-  // Datos filtrados por día específico
-  const datosDiarios = useMemo(() => {
-    return datos.filter(d => d.fecha === fechaDiaria);
-  }, [datos, fechaDiaria]);
-  const resumenDiario = useMemo(() => calcularResumenPorRecepcionista(datosDiarios), [datosDiarios]);
+  // For VistaDiaria we pass the same datos since they're already filtered by period
+  const resumenDiario = useMemo(() => calcularResumenPorRecepcionista(datos), [datos]);
+
+  // Navigation: prev/next period
+  const navigatePeriod = (dir) => {
+    const d = new Date(fechaRef + 'T12:00:00');
+    if (periodoTipo === 'dia') d.setDate(d.getDate() + dir);
+    else if (periodoTipo === 'semana') d.setDate(d.getDate() + (dir * 7));
+    else if (periodoTipo === 'mes') d.setMonth(d.getMonth() + dir);
+    const newDate = d.toISOString().slice(0, 10);
+    setFechaRef(newDate);
+  };
+
+  const goToToday = () => {
+    setFechaRef(getToday());
+    if (periodoTipo === 'rango') {
+      setRangoDesde(getToday());
+      setRangoHasta(getToday());
+    }
+  };
 
   if (loading) {
     return (
@@ -93,34 +158,134 @@ export default function EstadisticasSedePanel() {
     );
   }
 
+  const btnNav = {
+    padding: '0.35rem 0.6rem', borderRadius: 6, border: '1px solid #e2e8f0',
+    background: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+    color: '#64748b', transition: 'all 0.15s', lineHeight: 1,
+  };
+  const btnNavHover = (e, enter) => {
+    e.currentTarget.style.background = enter ? '#f1f5f9' : 'white';
+  };
+
   return (
     <div className="aud-animate-in">
-      {/* Header */}
+      {/* ── HEADER + PERIOD FILTERS ── */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-        flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem',
+        flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem',
       }}>
         <div>
           <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
             📊 Estadísticas de Sede
           </h2>
-          <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.2rem' }}>
-            Tablero financiero · {mesLabel} · {formatNumber(datos.length)} registros
+          <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.2rem', textTransform: 'capitalize' }}>
+            Tablero financiero · {periodoLabel} · {formatNumber(datos.length)} registros
           </div>
         </div>
 
-        {/* Filtros */}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <select
-            className="aud-select"
-            value={turnoFilter}
-            onChange={e => setTurnoFilter(e.target.value)}
-            style={{ minWidth: '120px', fontSize: '0.82rem' }}
+        {/* Turno filter */}
+        <select
+          className="aud-select"
+          value={turnoFilter}
+          onChange={e => setTurnoFilter(e.target.value)}
+          style={{ minWidth: '120px', fontSize: '0.82rem' }}
+        >
+          <option value="todos">Todos los turnos</option>
+          <option value="mañana">☀️ Mañana (7:30-16:30)</option>
+          <option value="tarde">🌙 Tarde (12-21hs)</option>
+        </select>
+      </div>
+
+      {/* ── PERIOD SELECTOR BAR ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
+        padding: '0.6rem 0.75rem', background: '#f8fafc', borderRadius: 10,
+        border: '1px solid #e2e8f0', marginBottom: '1rem',
+        flexWrap: 'wrap',
+      }}>
+        {/* Period type buttons */}
+        {[
+          { id: 'dia', label: '📅 Día' },
+          { id: 'semana', label: '📆 Semana' },
+          { id: 'mes', label: '🗓️ Mes' },
+          { id: 'rango', label: '↔️ Rango' },
+        ].map(p => (
+          <button
+            key={p.id}
+            onClick={() => setPeriodoTipo(p.id)}
+            style={{
+              padding: '0.35rem 0.75rem', borderRadius: 6, border: 'none',
+              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+              background: periodoTipo === p.id ? '#3b82f6' : 'white',
+              color: periodoTipo === p.id ? 'white' : '#64748b',
+              transition: 'all 0.15s',
+              boxShadow: periodoTipo === p.id ? '0 2px 6px rgba(59,130,246,0.25)' : '0 1px 2px rgba(0,0,0,0.04)',
+            }}
           >
-            <option value="todos">Todos los turnos</option>
-            <option value="mañana">☀️ Mañana (7:30-16:30)</option>
-            <option value="tarde">🌙 Tarde (12-21hs)</option>
-          </select>
+            {p.label}
+          </button>
+        ))}
+
+        <div style={{ width: 1, height: 24, background: '#e2e8f0', margin: '0 0.25rem' }} />
+
+        {/* Navigation + Date inputs */}
+        {periodoTipo !== 'rango' ? (
+          <>
+            <button style={btnNav} onClick={() => navigatePeriod(-1)}
+              onMouseOver={e => btnNavHover(e, true)} onMouseOut={e => btnNavHover(e, false)}>
+              ◀
+            </button>
+            <input
+              type="date"
+              className="aud-input"
+              value={fechaRef}
+              onChange={e => setFechaRef(e.target.value)}
+              style={{ width: '160px', marginBottom: 0, fontSize: '0.82rem', textAlign: 'center' }}
+            />
+            <button style={btnNav} onClick={() => navigatePeriod(1)}
+              onMouseOver={e => btnNavHover(e, true)} onMouseOut={e => btnNavHover(e, false)}>
+              ▶
+            </button>
+          </>
+        ) : (
+          <>
+            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8' }}>Desde:</label>
+            <input
+              type="date"
+              className="aud-input"
+              value={rangoDesde}
+              onChange={e => setRangoDesde(e.target.value)}
+              style={{ width: '150px', marginBottom: 0, fontSize: '0.82rem' }}
+            />
+            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8' }}>Hasta:</label>
+            <input
+              type="date"
+              className="aud-input"
+              value={rangoHasta}
+              onChange={e => setRangoHasta(e.target.value)}
+              style={{ width: '150px', marginBottom: 0, fontSize: '0.82rem' }}
+            />
+          </>
+        )}
+
+        <button
+          onClick={goToToday}
+          style={{
+            ...btnNav, background: '#eff6ff', color: '#3b82f6',
+            border: '1px solid #bfdbfe', fontWeight: 700, fontSize: '0.72rem',
+          }}
+          onMouseOver={e => { e.currentTarget.style.background = '#dbeafe'; }}
+          onMouseOut={e => { e.currentTarget.style.background = '#eff6ff'; }}
+        >
+          Hoy
+        </button>
+
+        {/* Period label summary */}
+        <div style={{
+          marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 600, color: '#1e293b',
+          textTransform: 'capitalize',
+        }}>
+          {periodoLabel}
         </div>
       </div>
 
@@ -132,7 +297,7 @@ export default function EstadisticasSedePanel() {
         {[
           { id: 'recepcionistas', icon: '👩‍💼', label: 'Por Recepcionista' },
           { id: 'metricas', icon: '📈', label: 'Métricas Operativas' },
-          { id: 'diario', icon: '📅', label: 'Vista Diaria' },
+          { id: 'diario', icon: '📅', label: 'Vista por Sector' },
         ].map(tab => (
           <button key={tab.id}
             onClick={() => { setVista(tab.id); setRecepcionistaDetalle(null); }}
@@ -172,10 +337,10 @@ export default function EstadisticasSedePanel() {
       {vista === 'metricas' && <VistaMetricas metricas={metricas} />}
       {vista === 'diario' && (
         <VistaDiaria
-          fechaDiaria={fechaDiaria}
-          setFechaDiaria={setFechaDiaria}
+          fechaDiaria={desde}
+          setFechaDiaria={(f) => { setPeriodoTipo('dia'); setFechaRef(f); }}
           resumen={resumenDiario}
-          datosRaw={datosDiarios}
+          datosRaw={datos}
         />
       )}
     </div>
@@ -530,16 +695,13 @@ function VistaMetricas({ metricas }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VISTA: DIARIA (un día específico)
+// VISTA: POR SECTOR (data filtered by global period)
 // ═══════════════════════════════════════════════════════════════
 function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
   const [expandedUser, setExpandedUser] = useState(null);
   const [expandedSector, setExpandedSector] = useState(null);
   const [showDepositos, setShowDepositos] = useState(false);
   const totalDia = datosRaw.reduce((s, r) => s + (Number(r.total_importe) || 0), 0);
-  const fechaLabel = new Date(fechaDiaria + 'T12:00:00').toLocaleDateString('es-AR', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  });
 
   // ── Agrupar datos raw por Sector (servicio) ──
   const porSector = useMemo(() => {
@@ -637,35 +799,29 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
 
   return (
     <div>
-      {/* Date picker + KPIs */}
+      {/* KPI summary for this period */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.75rem',
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
         marginBottom: '1rem', flexWrap: 'wrap',
       }}>
-        <input
-          type="date"
-          className="aud-input"
-          value={fechaDiaria}
-          onChange={e => { setFechaDiaria(e.target.value); setExpandedUser(null); setExpandedSector(null); }}
-          style={{ width: '180px', marginBottom: 0 }}
-        />
-        <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
-          {fechaLabel}
+        <span style={{
+          padding: '0.35rem 0.75rem', borderRadius: '8px',
+          background: '#eff6ff', fontSize: '0.82rem', fontWeight: 600, color: '#3b82f6',
+        }}>
+          💰 {formatMoney(totalDia)}
         </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
-          <span style={{
-            padding: '0.35rem 0.75rem', borderRadius: '8px',
-            background: '#eff6ff', fontSize: '0.82rem', fontWeight: 600, color: '#3b82f6',
-          }}>
-            💰 {formatMoney(totalDia)}
-          </span>
-          <span style={{
-            padding: '0.35rem 0.75rem', borderRadius: '8px',
-            background: '#f0fdf4', fontSize: '0.82rem', fontWeight: 600, color: '#10b981',
-          }}>
-            📋 {datosRaw.length} ops
-          </span>
-        </div>
+        <span style={{
+          padding: '0.35rem 0.75rem', borderRadius: '8px',
+          background: '#f0fdf4', fontSize: '0.82rem', fontWeight: 600, color: '#10b981',
+        }}>
+          📋 {datosRaw.length} ops
+        </span>
+        <span style={{
+          padding: '0.35rem 0.75rem', borderRadius: '8px',
+          background: '#faf5ff', fontSize: '0.82rem', fontWeight: 600, color: '#7c3aed',
+        }}>
+          🏥 {porSector.length} sectores
+        </span>
       </div>
 
       {/* ── FORMAS DE PAGO GLOBALES ── */}
