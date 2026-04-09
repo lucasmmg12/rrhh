@@ -24,7 +24,7 @@ function BarChart({ data, width = 500, height = 220 }) {
   const chartH = height - 50;
 
   return (
-    <svg width={width} height={height} style={{ display: 'block', margin: '0 auto' }}>
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: width + 'px', height: 'auto' }}>
       {data.map((d, i) => {
         const barH = (d.value / maxVal) * chartH;
         const x = 30 + i * (barW + 10);
@@ -68,7 +68,7 @@ function TrendChart({ data, width = 500, height = 180 }) {
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
   return (
-    <svg width={width} height={height} style={{ display: 'block', margin: '0 auto' }}>
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: width + 'px', height: 'auto' }}>
       {/* Grid lines */}
       {[0, 25, 50, 75, 100].map(v => {
         const y = padding.top + chartH - (v / 100) * chartH;
@@ -123,7 +123,7 @@ function RadarChart({ categories, size = 220 }) {
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
 
   return (
-    <svg width={size} height={size} style={{ display: 'block', margin: '0 auto' }}>
+    <svg viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: size + 'px', height: 'auto' }}>
       {/* Grid rings */}
       {[25, 50, 75, 100].map(v => (
         <polygon key={v}
@@ -455,7 +455,7 @@ export default function ReporteDiario({ fecha, auditorias, onClose }) {
       </div>
 
       {/* ─── KPIs ROW ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
         <div style={{ ...cardStyle, textAlign: 'center', borderLeft: '4px solid #1E5FA6' }}>
           <div style={labelStyle}>Promedio del Día</div>
           <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#1E5FA6' }}>{avgPorcentaje}%</div>
@@ -481,7 +481,7 @@ export default function ReporteDiario({ fecha, auditorias, onClose }) {
       </div>
 
       {/* ─── CHARTS ROW ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
         {/* Sector Comparison */}
         <div style={{ ...cardStyle, background: 'white' }}>
           <div style={labelStyle}>📊 Comparación entre Sectores</div>

@@ -278,3 +278,101 @@ export async function obtenerTodosColaboradores() {
   if (error) throw error;
   return data || [];
 }
+
+// ─── EDITAR AUDITORÍA ───────────────────────────────────────────
+export async function editarAuditoria(id, auditoria, items, planes) {
+  // 1. Update main audit record
+  const { error: auditError } = await supabase
+    .from('auditorias')
+    .update({
+      fecha: auditoria.fecha,
+      turno: auditoria.turno,
+      sede: auditoria.sede,
+      sector: auditoria.sector,
+      responsable_presente: auditoria.responsable_presente,
+      auxiliar_hoteleria: auditoria.auxiliar_hoteleria || null,
+      auditor_nombre: auditoria.auditor_nombre,
+      total_puntos: auditoria.total_puntos,
+      max_puntos: MAX_PUNTOS,
+      porcentaje: auditoria.porcentaje,
+      evaluacion: auditoria.evaluacion,
+      no_conformidades: auditoria.no_conformidades,
+      oportunidades_mejora: auditoria.oportunidades_mejora,
+    })
+    .eq('id', id);
+
+  if (auditError) throw auditError;
+
+  // 2. Replace items: delete old + insert new
+  const { error: delItemsErr } = await supabase
+    .from('auditoria_items')
+    .delete()
+    .eq('auditoria_id', id);
+  if (delItemsErr) throw delItemsErr;
+
+  const itemRows = Object.entries(items).map(([key, item]) => ({
+    auditoria_id: id,
+    categoria: item.categoria,
+    item_key: key,
+    item_label: item.label,
+    puntuacion: item.puntuacion ?? 0,
+    observaciones: item.observaciones || null,
+  }));
+
+  if (itemRows.length > 0) {
+    const { error: itemsError } = await supabase
+      .from('auditoria_items')
+      .insert(itemRows);
+    if (itemsError) throw itemsError;
+  }
+
+  // 3. Replace plans: delete old + insert new
+  const { error: delPlansErr } = await supabase
+    .from('auditoria_planes_accion')
+    .delete()
+    .eq('auditoria_id', id);
+  if (delPlansErr) throw delPlansErr;
+
+  if (planes && planes.length > 0) {
+    const planRows = planes.map(plan => ({
+      auditoria_id: id,
+      hallazgo: plan.hallazgo,
+      prioridad: plan.prioridad,
+      accion: plan.accion,
+      responsable: plan.responsable,
+      fecha_limite: plan.fecha_limite || null,
+      estado: plan.estado || 'pendiente',
+    }));
+
+    const { error: planesError } = await supabase
+      .from('auditoria_planes_accion')
+      .insert(planRows);
+    if (planesError) throw planesError;
+  }
+
+  return { id };
+}
+
+// ─── ELIMINAR AUDITORÍA ─────────────────────────────────────────
+export async function eliminarAuditoria(id) {
+  // Cascade: items → planes → audit
+  const { error: delItems } = await supabase
+    .from('auditoria_items')
+    .delete()
+    .eq('auditoria_id', id);
+  if (delItems) throw delItems;
+
+  const { error: delPlans } = await supabase
+    .from('auditoria_planes_accion')
+    .delete()
+    .eq('auditoria_id', id);
+  if (delPlans) throw delPlans;
+
+  const { error: delAudit } = await supabase
+    .from('auditorias')
+    .delete()
+    .eq('id', id);
+  if (delAudit) throw delAudit;
+
+  return true;
+}

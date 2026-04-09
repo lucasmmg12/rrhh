@@ -24,6 +24,8 @@ import {
   MAX_PUNTOS,
   calcularResultado,
   crearAuditoria,
+  editarAuditoria,
+  eliminarAuditoria,
   obtenerAuditorias,
   obtenerAuditoriaCompleta,
   obtenerPlanesAnteriores,
@@ -40,7 +42,7 @@ import ControlHorarioApp from '../controlhorario/ControlHorarioApp';
 // ═══════════════════════════════════════════════════════════════
 export default function AuditoriaApp(props) {
   const { user } = useAuth();
-  const [view, setView] = useState('home'); // home | new | detail | stats
+  const [view, setView] = useState('home'); // home | new | edit | detail | stats
   const [selectedAudit, setSelectedAudit] = useState(null);
 
   const handleNewAudit = () => setView('new');
@@ -51,6 +53,21 @@ export default function AuditoriaApp(props) {
       setView('detail');
     } catch (e) {
       console.error('Error loading audit:', e);
+    }
+  };
+  const handleEditAudit = () => {
+    if (selectedAudit) setView('edit');
+  };
+  const handleDeleteAudit = async () => {
+    if (!selectedAudit) return;
+    if (!window.confirm('¿Estás seguro de que querés eliminar esta auditoría? Esta acción no se puede deshacer.')) return;
+    try {
+      await eliminarAuditoria(selectedAudit.id);
+      setView('home');
+      setSelectedAudit(null);
+    } catch (e) {
+      console.error('Error deleting audit:', e);
+      alert('Error al eliminar: ' + e.message);
     }
   };
   const handleBack = () => {
@@ -114,9 +131,9 @@ export default function AuditoriaApp(props) {
                 style={{
                   padding: '0.5rem 1rem', border: 'none', cursor: 'pointer',
                   fontSize: '0.85rem', fontWeight: 600, background: 'none',
-                  borderBottom: (view === tab.id || (tab.id === 'home' && (view === 'new' || view === 'detail')))
+                  borderBottom: (view === tab.id || (tab.id === 'home' && (view === 'new' || view === 'detail' || view === 'edit')))
                     ? '2px solid var(--primary-500, #1E5FA6)' : '2px solid transparent',
-                  color: (view === tab.id || (tab.id === 'home' && (view === 'new' || view === 'detail')))
+                  color: (view === tab.id || (tab.id === 'home' && (view === 'new' || view === 'detail' || view === 'edit')))
                     ? 'var(--primary-500, #1E5FA6)' : '#94a3b8',
                   transition: 'all 0.2s',
                 }}
@@ -141,7 +158,12 @@ export default function AuditoriaApp(props) {
       {/* BODY */}
       {view === 'home' && <HomeView onNew={handleNewAudit} onView={handleViewAudit} />}
       {view === 'new' && <NewAuditView onSaved={handleBack} currentUser={user} />}
-      {view === 'detail' && selectedAudit && <DetailView audit={selectedAudit} />}
+      {view === 'edit' && selectedAudit && (
+        <NewAuditView onSaved={handleBack} currentUser={user} editData={selectedAudit} editId={selectedAudit.id} />
+      )}
+      {view === 'detail' && selectedAudit && (
+        <DetailView audit={selectedAudit} onEdit={handleEditAudit} onDelete={handleDeleteAudit} />
+      )}
       {view === 'stats' && (
         <div className="aud-content aud-content-wide aud-animate-in">
           <EstadisticasSedePanel />
@@ -407,32 +429,47 @@ function HomeView({ onNew, onView }) {
 // ═══════════════════════════════════════════════════════════════
 // NEW AUDIT VIEW — 6-step wizard
 // ═══════════════════════════════════════════════════════════════
-function NewAuditView({ onSaved, currentUser }) {
+function NewAuditView({ onSaved, currentUser, editData, editId }) {
+  const isEditMode = !!editData;
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Section 1: General Data
-  const [general, setGeneral] = useState({
-    fecha: new Date().toISOString().split('T')[0],
-    turno: 'mañana',
-    sede: 'Santa Fe',
-    sector: '',
-    responsable_presente: '',
-    auxiliar_hoteleria: '',
-    auditor_nombre: getAuditorName(currentUser),
+  // Section 1: General Data — hydrate from editData if editing
+  const [general, setGeneral] = useState(() => {
+    if (editData) {
+      return {
+        fecha: editData.fecha || new Date().toISOString().split('T')[0],
+        turno: editData.turno || 'mañana',
+        sede: editData.sede || 'Santa Fe',
+        sector: editData.sector || '',
+        responsable_presente: editData.responsable_presente || '',
+        auxiliar_hoteleria: editData.auxiliar_hoteleria || '',
+        auditor_nombre: editData.auditor_nombre || getAuditorName(currentUser),
+      };
+    }
+    return {
+      fecha: new Date().toISOString().split('T')[0],
+      turno: 'mañana',
+      sede: 'Santa Fe',
+      sector: '',
+      responsable_presente: '',
+      auxiliar_hoteleria: '',
+      auditor_nombre: getAuditorName(currentUser),
+    };
   });
 
-  // Section 2: Checklist items
+  // Section 2: Checklist items — hydrate from editData if editing
   const [items, setItems] = useState(() => {
     const initial = {};
     CHECKLIST_TEMPLATE.forEach(cat => {
       cat.items.forEach(item => {
+        const existing = editData?.items?.find(i => i.item_key === item.key);
         initial[item.key] = {
           categoria: cat.categoria,
           label: item.label,
-          puntuacion: null,
-          observaciones: '',
+          puntuacion: existing ? existing.puntuacion : null,
+          observaciones: existing?.observaciones || '',
         };
       });
     });
@@ -441,12 +478,24 @@ function NewAuditView({ onSaved, currentUser }) {
 
   // Section 4: Findings
   const [hallazgos, setHallazgos] = useState({
-    no_conformidades: '',
-    oportunidades_mejora: '',
+    no_conformidades: editData?.no_conformidades || '',
+    oportunidades_mejora: editData?.oportunidades_mejora || '',
   });
 
   // Section 5: Action Plans
-  const [planes, setPlanes] = useState([]);
+  const [planes, setPlanes] = useState(() => {
+    if (editData?.planes && editData.planes.length > 0) {
+      return editData.planes.map(p => ({
+        hallazgo: p.hallazgo || '',
+        prioridad: p.prioridad || 'media',
+        accion: p.accion || '',
+        responsable: p.responsable || '',
+        fecha_limite: p.fecha_limite || '',
+        estado: p.estado || 'pendiente',
+      }));
+    }
+    return [];
+  });
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [newPlan, setNewPlan] = useState({
     hallazgo: '', prioridad: 'media', accion: '', responsable: '', fecha_limite: '',
@@ -478,7 +527,7 @@ function NewAuditView({ onSaved, currentUser }) {
   useEffect(() => {
     if (general.sector) {
       setLoadingPrevPlans(true);
-      obtenerPlanesAnteriores(general.sector)
+      obtenerPlanesAnteriores(general.sector, editId || null)
         .then(setPlanesAnteriores)
         .catch(console.error)
         .finally(() => setLoadingPrevPlans(false));
@@ -510,18 +559,21 @@ function NewAuditView({ onSaved, currentUser }) {
 
     setSaving(true);
     try {
-      await crearAuditoria(
-        {
-          ...general,
-          total_puntos: score.total,
-          porcentaje: score.porcentaje,
-          evaluacion: score.evaluacion,
-          ...hallazgos,
-        },
-        items,
-        planes
-      );
-      showToast('✅ Auditoría guardada correctamente');
+      const auditData = {
+        ...general,
+        total_puntos: score.total,
+        porcentaje: score.porcentaje,
+        evaluacion: score.evaluacion,
+        ...hallazgos,
+      };
+
+      if (isEditMode) {
+        await editarAuditoria(editId, auditData, items, planes);
+        showToast('✅ Auditoría actualizada correctamente');
+      } else {
+        await crearAuditoria(auditData, items, planes);
+        showToast('✅ Auditoría guardada correctamente');
+      }
       setTimeout(onSaved, 1500);
     } catch (e) {
       console.error('Save error:', e);
@@ -648,7 +700,7 @@ function NewAuditView({ onSaved, currentUser }) {
             disabled={saving}
             onClick={handleSave}
           >
-            {saving ? '⏳ Guardando...' : '💾 Guardar Auditoría'}
+            {saving ? '⏳ Guardando...' : isEditMode ? '✏️ Actualizar Auditoría' : '💾 Guardar Auditoría'}
           </button>
         )}
       </div>
@@ -1387,7 +1439,7 @@ function StepSeguimiento({ planesAnteriores, loading, onUpdateStatus }) {
 // ═══════════════════════════════════════════════════════════════
 // DETAIL VIEW — Read-only view of a completed audit
 // ═══════════════════════════════════════════════════════════════
-function DetailView({ audit }) {
+function DetailView({ audit, onEdit, onDelete }) {
   const getColor = () => {
     if (audit.evaluacion === 'bueno') return 'var(--aud-success)';
     if (audit.evaluacion === 'regular') return 'var(--aud-warning)';
@@ -1409,6 +1461,43 @@ function DetailView({ audit }) {
 
   return (
     <div className="aud-content aud-animate-in">
+      {/* Action Buttons: Edit & Delete */}
+      <div style={{
+        display: 'flex', justifyContent: 'flex-end', gap: '0.5rem',
+        marginBottom: '0.75rem',
+      }}>
+        <button
+          onClick={onEdit}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+            padding: '0.5rem 1rem', borderRadius: '8px',
+            background: 'var(--aud-primary-light)', color: 'var(--aud-primary)',
+            border: '1.5px solid var(--aud-primary)',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseOver={e => { e.currentTarget.style.background = 'var(--aud-primary)'; e.currentTarget.style.color = 'white'; }}
+          onMouseOut={e => { e.currentTarget.style.background = 'var(--aud-primary-light)'; e.currentTarget.style.color = 'var(--aud-primary)'; }}
+        >
+          ✏️ Editar
+        </button>
+        <button
+          onClick={onDelete}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+            padding: '0.5rem 1rem', borderRadius: '8px',
+            background: 'var(--aud-danger-light)', color: 'var(--aud-danger)',
+            border: '1.5px solid var(--aud-danger)',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseOver={e => { e.currentTarget.style.background = 'var(--aud-danger)'; e.currentTarget.style.color = 'white'; }}
+          onMouseOut={e => { e.currentTarget.style.background = 'var(--aud-danger-light)'; e.currentTarget.style.color = 'var(--aud-danger)'; }}
+        >
+          🗑️ Eliminar
+        </button>
+      </div>
+
       {/* Result header */}
       <div className="aud-score-bar" style={{ borderLeft: `4px solid ${getColor()}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

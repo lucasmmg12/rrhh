@@ -770,23 +770,339 @@ body {
 }
 
 /* ─── RESPONSIVE ──────────────────────────────────────────── */
+
+/* ── TABLET (768px+) ── */
 @media (min-width: 768px) {
   .aud-content {
+    max-width: 900px;
     padding: 1.5rem 2rem;
   }
 
-  /* Stats panel uses full width on desktop */
   .aud-content.aud-content-wide {
     max-width: 100%;
     padding: 1.5rem 2.5rem;
   }
-  
+
+  .aud-header {
+    padding: 0.85rem 2rem;
+  }
+
+  .aud-header img {
+    height: 38px;
+  }
+
+  .aud-header-text h1 {
+    font-size: 1.15rem;
+  }
+
+  .aud-section-title {
+    font-size: 1.3rem;
+  }
+
+  .aud-card {
+    padding: 1.25rem;
+  }
+
   .aud-checklist-item {
     padding: 1rem 1.25rem;
   }
-  
+
   .aud-radio-btn {
     padding: 0.65rem 0.75rem;
     font-size: 0.78rem;
+  }
+
+  .aud-score-value {
+    font-size: 1.75rem;
+  }
+
+  .aud-score-track {
+    height: 12px;
+  }
+
+  .aud-btn {
+    font-size: 0.9rem;
+    padding: 0.85rem 1.25rem;
+  }
+
+  .aud-bottom-bar {
+    position: sticky;
+    bottom: 0;
+    box-shadow: 0 -1px 5px rgba(0,0,0,0.04);
+    border-radius: 12px 12px 0 0;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .aud-history-item {
+    padding: 1rem 1.25rem;
+  }
+
+  .aud-history-left h3 {
+    font-size: 0.95rem;
+  }
+
+  .aud-history-pct {
+    font-size: 1.35rem;
+  }
+
+  .aud-toast {
+    bottom: 24px;
+    font-size: 0.88rem;
+  }
+
+  .aud-empty {
+    padding: 4rem 2rem;
+  }
+
+  .aud-empty-icon {
+    font-size: 3.5rem;
+  }
+
+  .aud-empty h3 {
+    font-size: 1.15rem;
+  }
+}
+
+/* ── DESKTOP LARGE (1200px+) ── */
+@media (min-width: 1200px) {
+  .aud-content {
+    max-width: 1100px;
+    padding: 2rem 3rem;
+  }
+
+  .aud-content.aud-content-wide {
+    max-width: 100%;
+    padding: 2rem 3.5rem;
+  }
+
+  .aud-header {
+    padding: 1rem 3rem;
+  }
+
+  .aud-header img {
+    height: 42px;
+  }
+
+  .aud-header-text h1 {
+    font-size: 1.25rem;
+  }
+
+  .aud-header-text span {
+    font-size: 0.78rem;
+  }
+
+  .aud-header-btn {
+    font-size: 0.82rem;
+    padding: 0.55rem 1rem;
+  }
+
+  .aud-section-title {
+    font-size: 1.4rem;
+  }
+
+  .aud-section-subtitle {
+    font-size: 0.88rem;
+  }
+
+  /* Cards wider with better spacing */
+  .aud-card {
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    border-radius: 14px;
+  }
+
+  .aud-card-title {
+    font-size: 0.95rem;
+  }
+
+  /* Checklist items in 2 columns */
+  .aud-checklist-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .aud-checklist-item {
+    padding: 1.15rem 1.35rem;
+    margin-bottom: 0;
+    border-radius: 12px;
+  }
+
+  .aud-checklist-label {
+    font-size: 0.88rem;
+  }
+
+  .aud-radio-group {
+    gap: 0.65rem;
+  }
+
+  .aud-radio-btn {
+    padding: 0.7rem 0.85rem;
+    font-size: 0.82rem;
+    border-radius: 10px;
+  }
+
+  .aud-obs-input {
+    font-size: 0.85rem;
+    padding: 0.55rem 0.85rem;
+  }
+
+  /* Form inputs */
+  .aud-input,
+  .aud-select,
+  .aud-textarea {
+    padding: 0.75rem 1rem;
+    font-size: 0.92rem;
+    border-radius: 10px;
+  }
+
+  .aud-label {
+    font-size: 0.78rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .aud-row {
+    gap: 1rem;
+  }
+
+  /* Score display */
+  .aud-score-bar {
+    padding: 1.25rem 1.5rem;
+    border-radius: 14px;
+  }
+
+  .aud-score-value {
+    font-size: 2rem;
+  }
+
+  .aud-score-track {
+    height: 14px;
+    border-radius: 14px;
+  }
+
+  .aud-score-breakdown {
+    gap: 0.75rem;
+  }
+
+  .aud-score-stat-value {
+    font-size: 1.25rem;
+  }
+
+  .aud-badge {
+    font-size: 0.78rem;
+    padding: 0.3rem 0.8rem;
+  }
+
+  /* Action plans */
+  .aud-plan-card {
+    padding: 1.1rem 1.35rem;
+    border-radius: 12px;
+  }
+
+  .aud-plan-hallazgo {
+    font-size: 0.9rem;
+  }
+
+  .aud-plan-details {
+    font-size: 0.85rem;
+  }
+
+  .aud-plan-status-btn {
+    font-size: 0.75rem;
+    padding: 0.55rem 0.5rem;
+    border-radius: 10px;
+  }
+
+  /* Bottom bar: inline on desktop */
+  .aud-bottom-bar {
+    position: sticky;
+    bottom: 0;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+  }
+
+  .aud-bottom-bar .aud-btn {
+    max-width: 300px;
+  }
+
+  /* History items */
+  .aud-history-item {
+    padding: 1.15rem 1.5rem;
+    border-radius: 14px;
+  }
+
+  .aud-history-left h3 {
+    font-size: 1rem;
+  }
+
+  .aud-history-left span {
+    font-size: 0.78rem;
+  }
+
+  .aud-history-pct {
+    font-size: 1.5rem;
+  }
+
+  /* Add button */
+  .aud-add-btn {
+    padding: 1rem;
+    font-size: 0.88rem;
+    border-radius: 14px;
+  }
+
+  /* Steps navigation wider */
+  .aud-steps {
+    padding: 0.85rem 2rem;
+    gap: 0.35rem;
+  }
+
+  .aud-step {
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  .aud-step-num {
+    width: 24px;
+    height: 24px;
+    font-size: 0.72rem;
+  }
+
+  /* Toast centered on desktop */
+  .aud-toast {
+    bottom: 32px;
+    font-size: 0.9rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 28px;
+  }
+
+  .aud-empty {
+    padding: 5rem 3rem;
+  }
+
+  .aud-empty-icon {
+    font-size: 4rem;
+  }
+
+  .aud-empty h3 {
+    font-size: 1.25rem;
+  }
+
+  .aud-empty p {
+    font-size: 0.9rem;
+  }
+}
+
+/* ── ULTRAWIDE (1600px+) ── */
+@media (min-width: 1600px) {
+  .aud-content {
+    max-width: 1280px;
+  }
+
+  .aud-content.aud-content-wide {
+    padding: 2rem 5rem;
   }
 }
