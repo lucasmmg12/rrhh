@@ -1,11 +1,12 @@
 /**
  * Control de Horarios — Sede Santa Fe
- * Service Layer: All Supabase operations for sectors, collaborators, diagrams, and fichadas
+ * Service Layer: Usa las tablas existentes de fichadas (fichadas_colaboradores, fichadas_registros)
+ * NO depende de tablas ch_* — extrae los datos del módulo de Fichadas ya cargado
  * Sanatorio Argentino SRL
  */
 import { supabase } from '../supabaseClient';
 
-// ─── SECTOR COLORS (fallback map) ─────────────────────────────────
+// ─── SECTOR COLORS & ICONS ─────────────────────────────────────
 export const SECTOR_COLORS = {
   'SECTOR 1': '#3B82F6',
   'SECTOR 2': '#8B5CF6',
@@ -26,8 +27,65 @@ export const SECTOR_ICONS = {
   'MAMOGRAFÍA Y DENSITOGRAFÍA': '🩺',
 };
 
+// ─── MAPEO DE COLABORADORES → SECTORES (Sede Santa Fe) ──────────
+// Mapeo estático basado en la estructura organizacional definida
+const COLABORADORES_SEDE_SF = {
+  'SECTOR 1': ['JACQUES VIRGINIA', 'APARICIO EMILCE', 'MORALES MALEN'],
+  'SECTOR 2': ['ATENCIO EVELYN', 'QUINTERO BRITOS JULIETA', 'FIGUEROA HERRERA ERICA'],
+  'CITOLOGÍA': ['VEDIA ROMINA', 'DI VIRGILIO MICAELA', 'MESSINA CARLA'],
+  'DXI': ['PEREZ YANINA', 'DIAZ DANIELA', 'GORDILLO VEGA MONICA', 'ESPEJO CRISTINA', 'RUARTE DAIANA', 'RUARTE MICAELA'],
+  'GUARDIAS DE SEGURIDAD': ['GOMEZ JULIO', 'TORRES DAVID'],
+  'CHEQUEO Y PREVENIR': ['GODOY GUZMAN GISEL'],
+  'MAMOGRAFÍA Y DENSITOGRAFÍA': ['OROZCO LAURA MARIENELA', 'TORET ANA BELEN', 'GOMEZ MALVINA SOLEDAD', 'TELLO CECILIA', 'ZARZUELO JULIETA MICAELA', 'OLIVA MARIA VERONICA'],
+};
+
+// Build reverse lookup: nombre → sector
+const NOMBRE_TO_SECTOR = {};
+for (const [sector, nombres] of Object.entries(COLABORADORES_SEDE_SF)) {
+  for (const nombre of nombres) {
+    NOMBRE_TO_SECTOR[nombre] = sector;
+  }
+}
+
+/**
+ * Identifica el sector de un colaborador por su nombre.
+ * Usa un matching inteligente: primero exact, luego partial por apellido.
+ */
+export function getSectorByNombre(nombreCompleto) {
+  if (!nombreCompleto) return null;
+  const upper = nombreCompleto.toUpperCase().trim();
+  
+  // 1) Exact match
+  if (NOMBRE_TO_SECTOR[upper]) return NOMBRE_TO_SECTOR[upper];
+  
+  // 2) Check if DB name starts with any of our known names
+  for (const [nombre, sector] of Object.entries(NOMBRE_TO_SECTOR)) {
+    if (upper.startsWith(nombre) || nombre.startsWith(upper)) return sector;
+  }
+  
+  // 3) Fuzzy: check if ALL words of a known name are contained in the DB name
+  for (const [nombre, sector] of Object.entries(NOMBRE_TO_SECTOR)) {
+    const words = nombre.split(' ');
+    if (words.length >= 2 && words.every(w => upper.includes(w))) return sector;
+  }
+  
+  return null;
+}
+
+/**
+ * Get all unique sector names for display
+ */
+export function getSectoresSedeStafe() {
+  return Object.keys(COLABORADORES_SEDE_SF).map((nombre, i) => ({
+    id: nombre,
+    nombre,
+    color: SECTOR_COLORS[nombre] || '#94a3b8',
+    orden: i + 1,
+    sede: 'SANTA FE',
+  }));
+}
+
 // ─── REGLAS DE HORAS — Sede Santa Fe ─────────────────────────────
-// Lunes(1) a Jueves(4): 9hs | Viernes(5): 8hs | Sábado(6): 4hs | Domingo(0): 0hs
 export const HORAS_REQUERIDAS_DIA = {
   1: 9, // Lunes
   2: 9, // Martes
@@ -39,9 +97,7 @@ export const HORAS_REQUERIDAS_DIA = {
 };
 export const HORAS_SEMANALES_OBJETIVO = 44;
 
-// ─── TURNOS DEL DIAGRAMA (Planificación mensual) ────────────────
-// Códigos utilizados en el diagrama mensual de cada sector
-// El diagrama se recibe como PDF o imagen al inicio de cada mes
+// ─── TURNOS DEL DIAGRAMA ────────────────────────────────────────
 export const TURNOS_DIAGRAMA = {
   M:   { codigo: 'M',   nombre: 'Mañana',       inicio: '07:00', fin: '16:00', totalMin: 540,  color: '#3B82F6', esLaboral: true },
   T:   { codigo: 'T',   nombre: 'Tarde',         inicio: '13:30', fin: '21:30', totalMin: 480,  color: '#8B5CF6', esLaboral: true },
@@ -52,31 +108,19 @@ export const TURNOS_DIAGRAMA = {
   V:   { codigo: 'V',   nombre: 'Vacaciones',    inicio: null,    fin: null,    totalMin: 0,    color: '#10B981', esLaboral: false },
   L:   { codigo: 'L',   nombre: 'Libre/Franco',  inicio: null,    fin: null,    totalMin: 0,    color: '#94A3B8', esLaboral: false },
   F:   { codigo: 'F',   nombre: 'Feriado',       inicio: null,    fin: null,    totalMin: 0,    color: '#F472B6', esLaboral: false },
-  // Turnos combinados (ej: M/S = Mañana + Siesta)
   'M/S': { codigo: 'M/S', nombre: 'Mañana+Siesta', inicio: '07:00', fin: '17:00', totalMin: 600, color: '#0891B2', esLaboral: true },
   'M/T': { codigo: 'M/T', nombre: 'Mañana+Tarde',  inicio: '07:00', fin: '21:30', totalMin: 870, color: '#D97706', esLaboral: true },
   'S/T': { codigo: 'S/T', nombre: 'Siesta+Tarde',  inicio: '13:00', fin: '21:30', totalMin: 510, color: '#7C3AED', esLaboral: true },
 };
 
-/**
- * Obtiene los minutos planificados según el turno asignado en el diagrama.
- * Aplica el redondeo de 45min sobre los minutos del turno.
- */
 export function getHorasTurno(codigoTurno) {
   if (!codigoTurno) return null;
   const turno = TURNOS_DIAGRAMA[codigoTurno.toUpperCase()];
   if (!turno) return null;
-  return {
-    ...turno,
-    horasRedondeadas: redondearHoras(turno.totalMin),
-  };
+  return { ...turno, horasRedondeadas: redondearHoras(turno.totalMin) };
 }
 
-/**
- * Regla de redondeo de fichadas:
- * Se toma 1 hora a partir de los 45 minutos.
- * Ej: 3h30m → 3h | 3h45m → 4h | 8h44m → 8h | 8h45m → 9h
- */
+// ─── REDONDEO (regla de 45 min) ─────────────────────────────────
 export function redondearHoras(totalMinutos) {
   if (!totalMinutos || totalMinutos <= 0) return 0;
   const horas = Math.floor(totalMinutos / 60);
@@ -84,9 +128,6 @@ export function redondearHoras(totalMinutos) {
   return resto >= 45 ? horas + 1 : horas;
 }
 
-/**
- * Formatea minutos a "Xh Ym" para display
- */
 export function formatMinutosDisplay(totalMinutos) {
   if (!totalMinutos || totalMinutos <= 0) return '0h 0m';
   const h = Math.floor(totalMinutos / 60);
@@ -94,19 +135,12 @@ export function formatMinutosDisplay(totalMinutos) {
   return `${h}h ${m}m`;
 }
 
-/**
- * Obtiene las horas requeridas para una fecha específica
- */
 export function getHorasRequeridas(fechaStr) {
   const d = new Date(fechaStr + 'T12:00:00');
-  const dayOfWeek = d.getDay(); // 0=Dom, 1=Lun... 6=Sab
+  const dayOfWeek = d.getDay();
   return HORAS_REQUERIDAS_DIA[dayOfWeek] ?? 0;
 }
 
-/**
- * Evalúa el cumplimiento horario de un día
- * Retorna: { minutosReales, horasRedondeadas, horasRequeridas, deficit, cumple, esDiaLaboral }
- */
 export function evaluarCumplimientoDiario(fichada, fechaStr) {
   const horasRequeridas = getHorasRequeridas(fechaStr);
   const esDiaLaboral = horasRequeridas > 0;
@@ -126,10 +160,6 @@ export function evaluarCumplimientoDiario(fichada, fechaStr) {
   };
 }
 
-/**
- * Evalúa el cumplimiento semanal de un colaborador
- * Recibe array de { fichada, fecha } del cruce
- */
 export function evaluarCumplimientoSemanal(dias) {
   let totalMinutosReales = 0;
   let totalHorasRedondeadas = 0;
@@ -142,310 +172,118 @@ export function evaluarCumplimientoSemanal(dias) {
     const eval_ = evaluarCumplimientoDiario(dia.fichada, dia.fecha);
     totalMinutosReales += eval_.minutosReales;
     totalHorasRedondeadas += eval_.horasRedondeadas;
-
     if (eval_.esDiaLaboral) {
       diasLaborales++;
       if (eval_.cumple) diasCumplidos++;
       else diasDeficit++;
     }
-
-    detalleDias.push({
-      fecha: dia.fecha,
-      ...eval_,
-    });
+    detalleDias.push({ fecha: dia.fecha, ...eval_ });
   }
 
   const deficitSemanal = HORAS_SEMANALES_OBJETIVO - totalHorasRedondeadas;
   const cumpleSemana = totalHorasRedondeadas >= HORAS_SEMANALES_OBJETIVO;
 
   return {
-    totalMinutosReales,
-    totalHorasRedondeadas,
+    totalMinutosReales, totalHorasRedondeadas,
     objetivo: HORAS_SEMANALES_OBJETIVO,
     deficitSemanal: deficitSemanal > 0 ? deficitSemanal : 0,
     excedenteSemanal: deficitSemanal < 0 ? Math.abs(deficitSemanal) : 0,
-    cumpleSemana,
-    diasLaborales,
-    diasCumplidos,
-    diasDeficit,
-    detalleDias,
+    cumpleSemana, diasLaborales, diasCumplidos, diasDeficit, detalleDias,
     porcentajeSemanal: HORAS_SEMANALES_OBJETIVO > 0
       ? Math.min(100, Math.round((totalHorasRedondeadas / HORAS_SEMANALES_OBJETIVO) * 100))
       : 0,
   };
 }
 
-// ─── SECTORES ────────────────────────────────────────────────────
-export async function listarSectores(sede = 'SANTA FE') {
-  const { data, error } = await supabase
-    .from('ch_sectores')
-    .select('*')
-    .eq('activo', true)
-    .eq('sede', sede)
-    .order('orden');
+// ═══════════════════════════════════════════════════════════════════
+//  DATA ACCESS — Usa tablas existentes: fichadas_colaboradores,
+//  fichadas_registros, fichadas_totales_mensuales
+// ═══════════════════════════════════════════════════════════════════
 
-  if (error) throw error;
-  return data || [];
+// ─── SECTORES: derivados del mapeo estático ──────────────────────
+export async function listarSectores() {
+  return getSectoresSedeStafe();
 }
 
-export async function crearSector({ nombre, descripcion, color, orden, sede = 'SANTA FE' }) {
-  const { data, error } = await supabase
-    .from('ch_sectores')
-    .insert({ nombre, descripcion, color, orden, sede })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-// ─── COLABORADORES ───────────────────────────────────────────────
+// ─── COLABORADORES: de fichadas_colaboradores, filtrados a Sede SF ─
 export async function listarColaboradores(filtros = {}) {
-  let query = supabase
-    .from('ch_colaboradores')
-    .select(`
-      *,
-      sector:ch_sectores(id, nombre, color, orden, sede)
-    `)
+  // Get all collaborators from fichadas_colaboradores
+  const { data, error } = await supabase
+    .from('fichadas_colaboradores')
+    .select('*')
     .eq('activo', true)
     .order('nombre_completo');
 
-  if (filtros.sector_id) query = query.eq('sector_id', filtros.sector_id);
-  if (filtros.nombre) query = query.ilike('nombre_completo', `%${filtros.nombre}%`);
-
-  const { data, error } = await query;
   if (error) throw error;
-  return data || [];
-}
+  if (!data) return [];
 
-export async function crearColaborador({ nombre_completo, sector_id, dni, legajo, telefono, email, cargo, turno_habitual }) {
-  const { data, error } = await supabase
-    .from('ch_colaboradores')
-    .insert({
-      nombre_completo,
-      sector_id: sector_id || null,
-      dni: dni || null,
-      legajo: legajo || null,
-      telefono: telefono || null,
-      email: email || null,
-      cargo: cargo || null,
-      turno_habitual: turno_habitual || null,
-    })
-    .select(`*, sector:ch_sectores(id, nombre, color)`)
-    .single();
+  // Filter to only Sede Santa Fe collaborators
+  const allNamesSF = Object.values(COLABORADORES_SEDE_SF).flat();
 
-  if (error) throw error;
-  return data;
-}
+  const sfColabs = data.filter(c => {
+    const upper = (c.nombre_completo || '').toUpperCase().trim();
+    return allNamesSF.some(n => upper.includes(n) || n.includes(upper));
+  }).map(c => {
+    const sectorNombre = getSectorByNombre(c.nombre_completo);
+    return {
+      ...c,
+      sector: sectorNombre ? {
+        id: sectorNombre,
+        nombre: sectorNombre,
+        color: SECTOR_COLORS[sectorNombre] || '#94a3b8',
+      } : null,
+    };
+  });
 
-export async function actualizarColaborador(id, updates) {
-  const { data, error } = await supabase
-    .from('ch_colaboradores')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select(`*, sector:ch_sectores(id, nombre, color)`)
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-export async function desactivarColaborador(id) {
-  const { error } = await supabase
-    .from('ch_colaboradores')
-    .update({ activo: false, updated_at: new Date().toISOString() })
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ─── DIAGRAMAS (Planificación) ───────────────────────────────────
-export async function obtenerDiagramas(filtros = {}) {
-  let query = supabase
-    .from('ch_diagramas')
-    .select(`
-      *,
-      colaborador:ch_colaboradores(id, nombre_completo, sector_id,
-        sector:ch_sectores(id, nombre, color)
-      )
-    `)
-    .order('fecha');
-
-  if (filtros.colaborador_id) query = query.eq('colaborador_id', filtros.colaborador_id);
-  if (filtros.fecha_desde) query = query.gte('fecha', filtros.fecha_desde);
-  if (filtros.fecha_hasta) query = query.lte('fecha', filtros.fecha_hasta);
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
-}
-
-export async function obtenerDiagramaMensual(sector, date) {
-  // Legacy compat
-  return obtenerDiagramas({ fecha_desde: date, fecha_hasta: date });
-}
-
-export async function guardarDiagrama({ colaborador_id, fecha, turno, hora_inicio, hora_fin, observaciones }) {
-  const { data, error } = await supabase
-    .from('ch_diagramas')
-    .upsert({
-      colaborador_id,
-      fecha,
-      turno,
-      hora_inicio: hora_inicio || null,
-      hora_fin: hora_fin || null,
-      observaciones: observaciones || null,
-    }, { onConflict: 'colaborador_id,fecha' })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-export async function guardarDiagramasBatch(registros) {
-  if (!registros.length) return;
-
-  const { error } = await supabase
-    .from('ch_diagramas')
-    .upsert(registros, { onConflict: 'colaborador_id,fecha' });
-
-  if (error) throw error;
-}
-
-// ─── FICHADAS (Registros reales) ─────────────────────────────────
-export async function obtenerFichadas(filtros = {}) {
-  let query = supabase
-    .from('ch_fichadas')
-    .select(`
-      *,
-      colaborador:ch_colaboradores(id, nombre_completo, sector_id,
-        sector:ch_sectores(id, nombre, color)
-      )
-    `)
-    .order('fecha');
-
-  if (filtros.colaborador_id) query = query.eq('colaborador_id', filtros.colaborador_id);
-  if (filtros.fecha_desde) query = query.gte('fecha', filtros.fecha_desde);
-  if (filtros.fecha_hasta) query = query.lte('fecha', filtros.fecha_hasta);
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
-}
-
-export async function obtenerFichadasPorSector(sector, date) {
-  // Legacy compat
-  return obtenerFichadas({ fecha_desde: date, fecha_hasta: date });
-}
-
-export async function guardarFichada({ colaborador_id, fecha, hora_ingreso, hora_egreso, fuente, observaciones }) {
-  let horas_trabajadas_min = 0;
-  if (hora_ingreso && hora_egreso) {
-    const [ih, im] = hora_ingreso.split(':').map(Number);
-    const [eh, em] = hora_egreso.split(':').map(Number);
-    let inMin = ih * 60 + im;
-    let outMin = eh * 60 + em;
-    if (outMin < inMin) outMin += 24 * 60;
-    horas_trabajadas_min = outMin - inMin;
+  // Filter by sector if requested
+  if (filtros.sector_id) {
+    return sfColabs.filter(c => c.sector?.nombre === filtros.sector_id);
   }
 
-  const { data, error } = await supabase
-    .from('ch_fichadas')
-    .upsert({
-      colaborador_id,
-      fecha,
-      hora_ingreso: hora_ingreso || null,
-      hora_egreso: hora_egreso || null,
-      horas_trabajadas_min,
-      fuente: fuente || 'manual',
-      observaciones: observaciones || null,
-    }, { onConflict: 'colaborador_id,fecha' })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  return sfColabs;
 }
 
-// ─── NOVEDADES ───────────────────────────────────────────────────
-export async function obtenerNovedades(filtros = {}) {
+// ─── FICHADAS: de fichadas_registros ─────────────────────────────
+export async function obtenerFichadasRegistros(filtros = {}) {
   let query = supabase
-    .from('ch_novedades')
+    .from('fichadas_registros')
     .select(`
       *,
-      colaborador:ch_colaboradores(id, nombre_completo, sector_id,
-        sector:ch_sectores(id, nombre, color)
-      )
+      colaborador:fichadas_colaboradores(id, nombre_completo, area, sector)
     `)
-    .order('fecha', { ascending: false });
+    .order('fecha');
 
   if (filtros.colaborador_id) query = query.eq('colaborador_id', filtros.colaborador_id);
   if (filtros.fecha_desde) query = query.gte('fecha', filtros.fecha_desde);
   if (filtros.fecha_hasta) query = query.lte('fecha', filtros.fecha_hasta);
-  if (filtros.tipo) query = query.eq('tipo', filtros.tipo);
-  if (filtros.estado) query = query.eq('estado', filtros.estado);
 
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function crearNovedad({ colaborador_id, fecha, tipo, minutos_diferencia, descripcion }) {
-  const { data, error } = await supabase
-    .from('ch_novedades')
-    .insert({
-      colaborador_id,
-      fecha,
-      tipo,
-      minutos_diferencia: minutos_diferencia || 0,
-      descripcion: descripcion || null,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-export async function actualizarNovedad(id, updates) {
-  const { data, error } = await supabase
-    .from('ch_novedades')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-// ─── CRUCE: Diagrama vs Fichadas ─────────────────────────────────
+// ─── CRUCE PRINCIPAL ─────────────────────────────────────────────
 /**
- * Cruza diagramas con fichadas para un período dado.
- * Devuelve un array con el estado de cada día por colaborador.
+ * Construye el cruce de datos para Control Horario.
+ * Usa fichadas_registros como fuente de datos reales.
+ * No hay diagramas aún — solo fichadas.
  */
-export async function cruzarDiagramaVsFichadas(fecha_desde, fecha_hasta, sector_id = null) {
-  const filtros = { fecha_desde, fecha_hasta };
-  const [diagramas, fichadas, colaboradores] = await Promise.all([
-    obtenerDiagramas(filtros),
-    obtenerFichadas(filtros),
-    listarColaboradores(sector_id ? { sector_id } : {}),
+export async function cruzarDiagramaVsFichadas(fecha_desde, fecha_hasta) {
+  const [colaboradores, allFichadas] = await Promise.all([
+    listarColaboradores(),
+    obtenerFichadasRegistros({ fecha_desde, fecha_hasta }),
   ]);
 
-  // Index fichadas by colab+fecha
+  // Index fichadas by colaborador_id + fecha
   const fichadaMap = {};
-  for (const f of fichadas) {
-    fichadaMap[`${f.colaborador_id}_${f.fecha}`] = f;
+  for (const f of allFichadas) {
+    const key = `${f.colaborador_id}_${f.fecha}`;
+    // If there are multiple records for same day, pick the one with most hours
+    if (!fichadaMap[key] || (f.horas_trabajadas_min || 0) > (fichadaMap[key].horas_trabajadas_min || 0)) {
+      fichadaMap[key] = f;
+    }
   }
 
-  // Index diagramas by colab+fecha
-  const diagramaMap = {};
-  for (const d of diagramas) {
-    diagramaMap[`${d.colaborador_id}_${d.fecha}`] = d;
-  }
-
-  // Build result per collaborator
   const resultado = [];
   for (const colab of colaboradores) {
     const dias = [];
@@ -455,48 +293,32 @@ export async function cruzarDiagramaVsFichadas(fecha_desde, fecha_hasta, sector_
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const fechaStr = d.toISOString().slice(0, 10);
       const key = `${colab.id}_${fechaStr}`;
-      const diagrama = diagramaMap[key] || null;
       const fichada = fichadaMap[key] || null;
 
       let estado = 'sin_datos';
-      let minutoDiferencia = 0;
-
-      if (diagrama && fichada) {
-        if (diagrama.turno === 'F' || diagrama.turno === 'L') {
-          estado = fichada.hora_ingreso ? 'trabajo_en_franco' : 'franco';
-        } else if (!fichada.hora_ingreso) {
-          estado = 'ausencia';
+      if (fichada && fichada.horas_trabajadas_min > 0) {
+        const dayEval = evaluarCumplimientoDiario(fichada, fechaStr);
+        if (dayEval.esDiaLaboral) {
+          estado = dayEval.cumple ? 'cumplido' : 'llegada_tarde';
         } else {
-          if (diagrama.hora_inicio && fichada.hora_ingreso) {
-            const [ph, pm] = diagrama.hora_inicio.split(':').map(Number);
-            const [rh, rm] = fichada.hora_ingreso.split(':').map(Number);
-            minutoDiferencia = (rh * 60 + rm) - (ph * 60 + pm);
-
-            if (minutoDiferencia > 5) {
-              estado = 'llegada_tarde';
-            } else {
-              estado = 'cumplido';
-            }
-          } else {
-            estado = 'cumplido';
-          }
+          estado = 'trabajo_en_franco';
         }
-      } else if (diagrama && !fichada) {
-        if (diagrama.turno === 'F' || diagrama.turno === 'L') {
-          estado = 'franco';
-        } else {
-          estado = 'ausencia';
-        }
-      } else if (!diagrama && fichada) {
-        estado = 'sin_diagrama';
       }
+
+      // Map fichada fields to the format expected by the component
+      const fichadaNormalizada = fichada ? {
+        hora_ingreso: fichada.fichada_entrada,
+        hora_egreso: fichada.fichada_salida,
+        horas_trabajadas_min: fichada.horas_trabajadas_min || 0,
+        horas_redondeadas_min: fichada.horas_redondeadas_min || 0,
+      } : null;
 
       dias.push({
         fecha: fechaStr,
-        diagrama,
-        fichada,
+        diagrama: null, // No diagrams loaded yet
+        fichada: fichadaNormalizada,
         estado,
-        minutoDiferencia,
+        minutoDiferencia: 0,
       });
     }
 
@@ -513,15 +335,9 @@ export async function cruzarDiagramaVsFichadas(fecha_desde, fecha_hasta, sector_
 export function calcularEstadisticas(cruceData) {
   const stats = {
     totalColaboradores: cruceData.length,
-    cumplidos: 0,
-    llegadasTarde: 0,
-    ausencias: 0,
-    francos: 0,
-    sinDatos: 0,
-    sinDiagrama: 0,
-    trabajoEnFranco: 0,
+    cumplidos: 0, llegadasTarde: 0, ausencias: 0,
+    francos: 0, sinDatos: 0, sinDiagrama: 0, trabajoEnFranco: 0,
   };
-
   for (const colab of cruceData) {
     for (const dia of colab.dias) {
       switch (dia.estado) {
@@ -535,35 +351,23 @@ export function calcularEstadisticas(cruceData) {
       }
     }
   }
-
   return stats;
 }
 
-// ─── ESTADÍSTICAS POR SECTOR ─────────────────────────────────────
 export function calcularEstadisticasPorSector(cruceData) {
   const porSector = {};
-
   for (const colab of cruceData) {
     const sectorNombre = colab.colaborador?.sector?.nombre || 'SIN SECTOR';
     const sectorColor = colab.colaborador?.sector?.color || '#94A3B8';
-
     if (!porSector[sectorNombre]) {
       porSector[sectorNombre] = {
-        nombre: sectorNombre,
-        color: sectorColor,
-        totalColaboradores: 0,
-        cumplidos: 0,
-        llegadasTarde: 0,
-        ausencias: 0,
-        francos: 0,
-        sinDatos: 0,
-        colaboradores: [],
+        nombre: sectorNombre, color: sectorColor,
+        totalColaboradores: 0, cumplidos: 0, llegadasTarde: 0,
+        ausencias: 0, francos: 0, sinDatos: 0, colaboradores: [],
       };
     }
-
     porSector[sectorNombre].totalColaboradores++;
     porSector[sectorNombre].colaboradores.push(colab);
-
     for (const dia of colab.dias) {
       switch (dia.estado) {
         case 'cumplido': porSector[sectorNombre].cumplidos++; break;
@@ -574,14 +378,13 @@ export function calcularEstadisticasPorSector(cruceData) {
       }
     }
   }
-
   return porSector;
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 export function formatTime(timeStr) {
   if (!timeStr) return '—';
-  return timeStr.slice(0, 5); // HH:MM
+  return timeStr.slice(0, 5);
 }
 
 export function formatDate(dateStr) {
@@ -600,26 +403,19 @@ export function getInitials(name) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-/**
- * Get the date range for the current week (Mon-Sun) or a specific date
- */
 export function getWeekRange(refDate = new Date()) {
   const d = new Date(refDate);
-  const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon...
+  const dayOfWeek = d.getDay();
   const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
   const monday = new Date(d.setDate(diff));
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
-
   return {
     desde: monday.toISOString().slice(0, 10),
     hasta: sunday.toISOString().slice(0, 10),
   };
 }
 
-/**
- * Get the date range for a month
- */
 export function getMonthRange(year, month) {
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
@@ -627,4 +423,9 @@ export function getMonthRange(year, month) {
     desde: firstDay.toISOString().slice(0, 10),
     hasta: lastDay.toISOString().slice(0, 10),
   };
+}
+
+// Legacy compat — guardarFichada not needed since we read from fichadas_registros
+export async function guardarFichada() {
+  console.warn('[ControlHorario] guardarFichada no disponible — usar módulo de Fichadas');
 }
