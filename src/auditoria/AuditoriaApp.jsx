@@ -31,6 +31,7 @@ import {
   obtenerTodosColaboradores,
 } from './auditoriaService';
 import EstadisticasSedePanel from './EstadisticasSedePanel';
+import ReporteDiario from './ReporteDiario';
 import ControlHorarioApp from '../controlhorario/ControlHorarioApp';
 
 // ═══════════════════════════════════════════════════════════════
@@ -155,12 +156,14 @@ export default function AuditoriaApp(props) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HOME VIEW — History list
+// HOME VIEW — History list grouped by day
 // ═══════════════════════════════════════════════════════════════
 function HomeView({ onNew, onView }) {
   const [auditorias, setAuditorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterSector, setFilterSector] = useState('');
+  const [reporteFecha, setReporteFecha] = useState(null);
+  const [reporteAuditorias, setReporteAuditorias] = useState([]);
 
   useEffect(() => {
     loadAudits();
@@ -178,6 +181,28 @@ function HomeView({ onNew, onView }) {
     }
   };
 
+  // Group audits by date
+  const groupedByDay = useMemo(() => {
+    const groups = {};
+    auditorias.forEach(a => {
+      if (!groups[a.fecha]) groups[a.fecha] = [];
+      groups[a.fecha].push(a);
+    });
+    // Sort by date desc
+    return Object.entries(groups)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([fecha, items]) => ({
+        fecha,
+        auditorias: items,
+        auditores: [...new Set(items.map(a => a.auditor_nombre))],
+        promedio: Math.round(items.reduce((s, a) => s + a.porcentaje, 0) / items.length * 100) / 100,
+        evaluacionGlobal: (() => {
+          const avg = items.reduce((s, a) => s + a.porcentaje, 0) / items.length;
+          return avg >= 85 ? 'bueno' : avg >= 60 ? 'regular' : 'critico';
+        })(),
+      }));
+  }, [auditorias]);
+
   const getEvalColor = (ev) => {
     if (ev === 'bueno') return 'var(--aud-success)';
     if (ev === 'regular') return 'var(--aud-warning)';
@@ -186,13 +211,36 @@ function HomeView({ onNew, onView }) {
 
   const formatFecha = (f) => {
     const d = new Date(f + 'T12:00:00');
+    return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const formatFechaShort = (f) => {
+    const d = new Date(f + 'T12:00:00');
     return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
   };
+
+  const handleOpenReport = (fecha, auditorias) => {
+    setReporteFecha(fecha);
+    setReporteAuditorias(auditorias);
+  };
+
+  // If a report is open, show it
+  if (reporteFecha) {
+    return (
+      <div className="aud-content aud-animate-in" style={{ padding: '1rem 1.5rem' }}>
+        <ReporteDiario
+          fecha={reporteFecha}
+          auditorias={reporteAuditorias}
+          onClose={() => { setReporteFecha(null); setReporteAuditorias([]); }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="aud-content aud-animate-in">
       <div className="aud-section-title">Historial de Auditorías</div>
-      <div className="aud-section-subtitle">Revisá las auditorías anteriores o creá una nueva</div>
+      <div className="aud-section-subtitle">Revisá las auditorías anteriores agrupadas por día</div>
 
       <div className="aud-field">
         <select
@@ -222,25 +270,134 @@ function HomeView({ onNew, onView }) {
           </button>
         </div>
       ) : (
-        auditorias.map(a => {
-          const sectorLabel = SECTORES.find(s => s.value === a.sector)?.label || a.sector;
-          return (
-            <div key={a.id} className="aud-history-item aud-slide-up" onClick={() => onView(a.id)}>
-              <div className="aud-history-left">
-                <h3>{sectorLabel}</h3>
-                <span>{formatFecha(a.fecha)} · Turno {a.turno} · {a.auditor_nombre}</span>
-              </div>
-              <div className="aud-history-right">
-                <div className="aud-history-pct" style={{ color: getEvalColor(a.evaluacion) }}>
-                  {a.porcentaje}%
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          {groupedByDay.map(group => (
+            <div key={group.fecha} style={{
+              background: 'white', border: '1px solid #e2e8f0', borderRadius: 12,
+              overflow: 'hidden', transition: 'all 0.2s',
+            }}>
+              {/* Day Header */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '0.75rem 1rem', background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 10,
+                    background: 'linear-gradient(135deg, #1E5FA6, #0284c7)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'white', fontWeight: 900, fontSize: '0.85rem', flexShrink: 0,
+                  }}>
+                    {new Date(group.fecha + 'T12:00:00').getDate()}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b', textTransform: 'capitalize' }}>
+                      {formatFecha(group.fecha)}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.15rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                        {group.auditorias.length} auditoría{group.auditorias.length > 1 ? 's' : ''}
+                      </span>
+                      <span style={{ color: '#e2e8f0' }}>·</span>
+                      {group.auditores.map(aud => (
+                        <span key={aud} style={{
+                          fontSize: '0.68rem', fontWeight: 700,
+                          padding: '0.1rem 0.45rem', borderRadius: 6,
+                          background: '#eff6ff', color: '#1E5FA6',
+                          border: '1px solid #bfdbfe',
+                        }}>
+                          👤 {aud}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <span className={`aud-badge ${a.evaluacion}`}>
-                  {a.evaluacion === 'bueno' ? '✓ Bueno' : a.evaluacion === 'regular' ? '⚠ Regular' : '✗ Crítico'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 900, fontSize: '1.2rem', color: getEvalColor(group.evaluacionGlobal) }}>
+                      {group.promedio}%
+                    </div>
+                    <span style={{
+                      fontSize: '0.65rem', fontWeight: 700,
+                      padding: '0.1rem 0.4rem', borderRadius: 4,
+                      background: group.evaluacionGlobal === 'bueno' ? '#dcfce7'
+                        : group.evaluacionGlobal === 'regular' ? '#fef3c7' : '#fef2f2',
+                      color: group.evaluacionGlobal === 'bueno' ? '#166534'
+                        : group.evaluacionGlobal === 'regular' ? '#92400e' : '#991b1b',
+                    }}>
+                      {group.evaluacionGlobal === 'bueno' ? '✓ BUENO' : group.evaluacionGlobal === 'regular' ? '⚠ REGULAR' : '✗ CRÍTICO'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleOpenReport(group.fecha, group.auditorias); }}
+                    style={{
+                      padding: '0.4rem 0.75rem', borderRadius: 8,
+                      border: '1px solid #e2e8f0', background: 'white',
+                      cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                      color: '#1E5FA6', transition: 'all 0.15s',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.background = '#1E5FA6'; e.currentTarget.style.color = 'white'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = '#1E5FA6'; }}
+                  >
+                    📊 Ver Reporte
+                  </button>
+                </div>
+              </div>
+
+              {/* Audits list */}
+              <div style={{ padding: '0.25rem 0' }}>
+                {group.auditorias.map(a => {
+                  const sectorLabel = SECTORES.find(s => s.value === a.sector)?.label || a.sector;
+                  return (
+                    <div
+                      key={a.id}
+                      className="aud-slide-up"
+                      onClick={() => onView(a.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '0.65rem 1rem', cursor: 'pointer',
+                        borderBottom: '1px solid #f8fafc',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseOver={e => e.currentTarget.style.background = '#fafafa'}
+                      onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div style={{
+                          width: 6, height: 32, borderRadius: 3,
+                          background: getEvalColor(a.evaluacion),
+                        }} />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{sectorLabel}</div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            Turno {a.turno} · {a.auditor_nombre}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.95rem', color: getEvalColor(a.evaluacion) }}>
+                          {a.porcentaje}%
+                        </span>
+                        <span style={{
+                          fontSize: '0.65rem', fontWeight: 700,
+                          padding: '0.1rem 0.4rem', borderRadius: 4,
+                          background: a.evaluacion === 'bueno' ? '#dcfce7'
+                            : a.evaluacion === 'regular' ? '#fef3c7' : '#fef2f2',
+                          color: a.evaluacion === 'bueno' ? '#166534'
+                            : a.evaluacion === 'regular' ? '#92400e' : '#991b1b',
+                        }}>
+                          {a.evaluacion === 'bueno' ? '✓' : a.evaluacion === 'regular' ? '⚠' : '✗'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          );
-        })
+          ))}
+        </div>
       )}
     </div>
   );
