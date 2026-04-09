@@ -192,6 +192,7 @@ export default function VisitasSedePanel() {
       <div style={{ display: 'flex', gap: '0', marginBottom: '1rem' }}>
         {[
           { id: 'usuarios', label: '👤 Por Colaborador' },
+          { id: 'cierre', label: '📊 Cierre Diario' },
           { id: 'especialidades', label: '🩺 Por Especialidad' },
           { id: 'tipos', label: '📋 Por Tipo Visita' },
           { id: 'timeline', label: '📈 Timeline Diario' },
@@ -396,6 +397,95 @@ export default function VisitasSedePanel() {
                   );
                 })}
               </div>
+            </div>
+          )}
+          {/* ── VISTA: CIERRE DIARIO POR COLABORADOR ── */}
+          {vistaActiva === 'cierre' && (
+            <div>
+              {diasOrdenados.slice().reverse().map(([dia, diaData]) => {
+                const dateLabel = new Date(dia + 'T12:00:00').toLocaleDateString('es-AR', {
+                  weekday: 'long', day: 'numeric', month: 'long',
+                });
+                // Get all users active on this day
+                const usrForDay = usuarios
+                  .map(([usr, data]) => ({
+                    nombre: usr,
+                    cantidad: data.por_dia[dia] || 0,
+                  }))
+                  .filter(u => u.cantidad > 0)
+                  .sort((a, b) => b.cantidad - a.cantidad);
+
+                const totalDia = diaData.cantidad;
+
+                return (
+                  <div key={dia} className="aud-card" style={{ padding: '1rem', marginBottom: '0.65rem' }}>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      marginBottom: '0.65rem', paddingBottom: '0.5rem', borderBottom: '1px solid #e2e8f0',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 8,
+                          background: 'linear-gradient(135deg, #1e40af, #3b82f6)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontWeight: 800, fontSize: '0.85rem',
+                        }}>
+                          {new Date(dia + 'T12:00:00').getDate()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b', textTransform: 'capitalize' }}>
+                            {dateLabel}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {usrForDay.length} colaborador{usrForDay.length !== 1 ? 'es' : ''} · {diaData.pacientes} pacientes
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#1e40af' }}>
+                          {formatNumber(totalDia)}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>consultas</div>
+                      </div>
+                    </div>
+                    {/* Users table for this day */}
+                    <div style={{ display: 'grid', gap: '0.35rem' }}>
+                      {usrForDay.map((usr, idx) => {
+                        const pct = Math.round((usr.cantidad / totalDia) * 100);
+                        return (
+                          <div key={usr.nombre} style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.35rem 0.5rem', borderRadius: '8px',
+                            background: idx % 2 === 0 ? '#f8fafc' : 'white',
+                          }}>
+                            <span style={{
+                              width: '8px', height: '8px', borderRadius: '50%',
+                              background: CHART_COLORS[idx % CHART_COLORS.length],
+                              display: 'inline-block', flexShrink: 0,
+                            }} />
+                            <span style={{ flex: 1, fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                              {usr.nombre}
+                            </span>
+                            <div style={{ width: '80px', height: '5px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{
+                                height: '100%', borderRadius: '3px',
+                                background: CHART_COLORS[idx % CHART_COLORS.length],
+                                width: `${pct}%`,
+                              }} />
+                            </div>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e40af', width: '40px', textAlign: 'right' }}>
+                              {usr.cantidad}
+                            </span>
+                            <span style={{
+                              fontSize: '0.65rem', fontWeight: 600, color: '#94a3b8', width: '35px', textAlign: 'right',
+                            }}>{pct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

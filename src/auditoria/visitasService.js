@@ -9,15 +9,32 @@ import { supabase } from '../supabaseClient';
  * Obtiene visitas para un rango de fechas
  */
 export async function obtenerVisitas(fechaDesde, fechaHasta) {
-  const { data, error } = await supabase
-    .from('visitas_sede')
-    .select('*')
-    .gte('fecha', fechaDesde)
-    .lte('fecha', fechaHasta)
-    .order('fecha', { ascending: false });
+  // Supabase limits to 1000 rows by default, so we paginate to get ALL
+  const PAGE_SIZE = 5000;
+  let allData = [];
+  let from = 0;
+  let hasMore = true;
 
-  if (error) throw error;
-  return data || [];
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('visitas_sede')
+      .select('*')
+      .gte('fecha', fechaDesde)
+      .lte('fecha', fechaHasta)
+      .order('fecha', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      hasMore = false;
+    } else {
+      allData = allData.concat(data);
+      from += PAGE_SIZE;
+      if (data.length < PAGE_SIZE) hasMore = false;
+    }
+  }
+
+  return allData;
 }
 
 /**
