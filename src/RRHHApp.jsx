@@ -7,6 +7,7 @@ const CalendarApp = lazy(() => import('./calendario/CalendarApp.jsx'));
 const FichadasApp = lazy(() => import('./fichadas/FichadasApp.jsx'));
 const AuditoriaApp = lazy(() => import('./auditoria/AuditoriaApp.jsx'));
 const EfemeridesApp = lazy(() => import('./efemerides/EfemeridesApp.jsx'));
+const ControlHorarioApp = lazy(() => import('./controlhorario/ControlHorarioApp.jsx'));
 
 // Loading spinner
 function LoadingSpinner({ label = 'Cargando módulo...' }) {
@@ -72,6 +73,14 @@ function HomePanel() {
       icon: '🎂',
       color: '#D97706',
       bg: '#FEF3C7',
+    },
+    {
+      id: 'controlhorario',
+      title: 'Control Horario — Sede SF',
+      description: 'Auditoría de asistencia Sede Santa Fe',
+      icon: '⏱️',
+      color: '#0891B2',
+      bg: '#CFFAFE',
     },
   ];
 
@@ -197,6 +206,7 @@ export default function RRHHApp() {
     organigrama: 'Organigrama Institucional',
     calendario: 'Agenda de Salas',
     fichadas: 'Control de Fichadas',
+    controlhorario: 'Control Horario — Sede Santa Fe',
     auditoria: 'Seguimiento y Acompañamiento de Sede',
     efemerides: 'Efemérides',
     config: 'Configuración',
@@ -259,6 +269,12 @@ export default function RRHHApp() {
           {activeView === 'efemerides' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <EfemeridesApp embedded />
+            </div>
+          )}
+
+          {activeView === 'controlhorario' && (
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <ControlHorarioApp embedded />
             </div>
           )}
 

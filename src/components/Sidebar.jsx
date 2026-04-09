@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Home, Building2, Calendar, Clock, ClipboardCheck, CalendarHeart,
-  PanelLeftClose, PanelLeft, ChevronDown, Settings,
+  PanelLeftClose, PanelLeft, ChevronDown, Settings, Timer,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
@@ -137,6 +137,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
           { id: 'organigrama', label: 'Organigrama', icon: Building2 },
           { id: 'calendario', label: 'Agenda de Salas', icon: Calendar },
           { id: 'fichadas', label: 'Control de Fichadas', icon: Clock },
+          { id: 'controlhorario', label: 'Control Horario — Sede SF', icon: Timer },
         ].map(item => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
