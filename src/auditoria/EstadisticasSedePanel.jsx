@@ -4,6 +4,7 @@ import {
   calcularResumenPorRecepcionista,
   calcularMetricasOperativas,
 } from './facturacionService';
+import VisitasSedePanel from './VisitasSedePanel';
 
 // ═══════════════════════════════════════════════════════════════
 // ESTADÍSTICAS DE SEDE — Panel completo de facturación
@@ -298,6 +299,7 @@ export default function EstadisticasSedePanel() {
           { id: 'recepcionistas', icon: '👩‍💼', label: 'Por Recepcionista' },
           { id: 'metricas', icon: '📈', label: 'Métricas Operativas' },
           { id: 'diario', icon: '📅', label: 'Vista por Sector' },
+          { id: 'visitas', icon: '🏥', label: 'Consultas Médicas' },
         ].map(tab => (
           <button key={tab.id}
             onClick={() => { setVista(tab.id); setRecepcionistaDetalle(null); }}
@@ -343,6 +345,7 @@ export default function EstadisticasSedePanel() {
           datosRaw={datos}
         />
       )}
+      {vista === 'visitas' && <VisitasSedePanel />}
     </div>
   );
 }
