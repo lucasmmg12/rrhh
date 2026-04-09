@@ -209,6 +209,7 @@ export default function RRHHApp() {
     controlhorario: 'Control Horario — Sede Santa Fe',
     auditoria: 'Seguimiento y Acompañamiento de Sede',
     efemerides: 'Efemérides',
+    'ayuda-ch': 'Ayuda — Control Horario',
     config: 'Configuración',
   };
 
@@ -275,6 +276,12 @@ export default function RRHHApp() {
           {activeView === 'controlhorario' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <ControlHorarioApp embedded />
+            </div>
+          )}
+
+          {activeView === 'ayuda-ch' && (
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <ControlHorarioApp embedded initialTab="ayuda" />
             </div>
           )}
 

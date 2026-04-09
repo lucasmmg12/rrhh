@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Home, Building2, Calendar, Clock, ClipboardCheck, CalendarHeart,
-  PanelLeftClose, PanelLeft, ChevronDown, Settings, Timer,
+  PanelLeftClose, PanelLeft, ChevronDown, Settings, Timer, HelpCircle,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
@@ -190,6 +190,22 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
             >
               <CalendarHeart size={20} className="sidebar__item-icon" />
               {!collapsed && <span className="sidebar__item-label">Efemérides</span>}
+              {isActive && <div className="sidebar__item-indicator" />}
+            </button>
+          );
+        })()}
+
+        {/* ─── Ayuda Control Horario ─── */}
+        {(() => {
+          const isActive = activeView === 'ayuda-ch';
+          return (
+            <button
+              className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
+              onClick={() => onViewChange('ayuda-ch')}
+              title={collapsed ? 'Ayuda Control Horario' : undefined}
+            >
+              <HelpCircle size={20} className="sidebar__item-icon" />
+              {!collapsed && <span className="sidebar__item-label">Ayuda Control Horario</span>}
               {isActive && <div className="sidebar__item-indicator" />}
             </button>
           );

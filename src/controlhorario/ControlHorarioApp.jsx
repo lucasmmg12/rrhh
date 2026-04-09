@@ -41,8 +41,8 @@ const STATUS_CONFIG = {
 };
 
 // ─── MAIN COMPONENT ───────────────────────────────────────
-export default function ControlHorarioApp({ embedded = false }) {
-  const [activeTab, setActiveTab] = useState('resumen');
+export default function ControlHorarioApp({ embedded = false, initialTab = 'resumen' }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedSector, setSelectedSector] = useState(null);
 
   const [sectores, setSectores] = useState([]);
