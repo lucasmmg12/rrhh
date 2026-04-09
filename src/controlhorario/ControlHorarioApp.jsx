@@ -13,6 +13,8 @@ import {
   getDayName,
   getInitials,
   SECTOR_ICONS,
+  SECTOR_COLORS,
+  TURNOS_DIAGRAMA,
   // ─── Reglas de horas ───
   HORAS_REQUERIDAS_DIA,
   HORAS_SEMANALES_OBJETIVO,
@@ -150,6 +152,7 @@ export default function ControlHorarioApp({ embedded = false }) {
           { id: 'semanal', icon: '📅', label: 'Vista Semanal' },
           { id: 'fichadas', icon: '⏰', label: 'Fichadas' },
           { id: 'auditoria', icon: '🔍', label: 'Auditoría' },
+          { id: 'ayuda', icon: '❓', label: 'Ayuda' },
         ].map(tab => (
           <button key={tab.id} className={`ch-tab ${activeTab === tab.id ? 'ch-tab--active' : ''}`} onClick={() => setActiveTab(tab.id)}>
             <span className="ch-tab__icon">{tab.icon}</span>
@@ -166,19 +169,22 @@ export default function ControlHorarioApp({ embedded = false }) {
       )}
 
       {/* ─── Reglas Card ─── */}
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem', padding: '0.6rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, fontSize: '0.72rem', color: '#92400e', fontWeight: 600, alignItems: 'center' }}>
-        <span>📋 Regla horaria:</span>
-        <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>L-J: 9h</span>
-        <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>V: 8h</span>
-        <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>S: 4h</span>
-        <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>Semana: 44h</span>
-        <span style={{ marginLeft: 'auto', fontWeight: 400, fontStyle: 'italic' }}>Redondeo: 45min = 1h (ej: 3h30m→3h · 3h45m→4h)</span>
-      </div>
+      {activeTab !== 'ayuda' && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem', padding: '0.6rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, fontSize: '0.72rem', color: '#92400e', fontWeight: 600, alignItems: 'center' }}>
+          <span>📋 Regla horaria:</span>
+          <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>L-J: 9h</span>
+          <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>V: 8h</span>
+          <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>S: 4h</span>
+          <span style={{ background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: 6 }}>Semana: 44h</span>
+          <span style={{ marginLeft: 'auto', fontWeight: 400, fontStyle: 'italic' }}>Redondeo: 45min = 1h (ej: 3h30m→3h · 3h45m→4h)</span>
+        </div>
+      )}
 
       {activeTab === 'resumen' && <ResumenView stats={stats} sectorStats={sectorStats} sectores={sectores} selectedSector={selectedSector} onSelectSector={setSelectedSector} cruceData={cruceData} weeklyEvals={weeklyEvals} filteredCruce={filteredCruce} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
       {activeTab === 'semanal' && <SemanalView filteredCruce={filteredCruce} weekDays={weekDays} today={today} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} sectores={sectores} selectedSector={selectedSector} onSelectSector={setSelectedSector} weeklyEvals={weeklyEvals} loading={loading} />}
       {activeTab === 'fichadas' && <FichadasView filteredCruce={filteredCruce} weekDays={weekDays} today={today} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} sectores={sectores} selectedSector={selectedSector} onSelectSector={setSelectedSector} weeklyEvals={weeklyEvals} onReload={loadData} loading={loading} />}
       {activeTab === 'auditoria' && <AuditoriaView sectorStats={sectorStats} sectores={sectores} cruceData={cruceData} dateRange={dateRange} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} weeklyEvals={weeklyEvals} filteredCruce={filteredCruce} />}
+      {activeTab === 'ayuda' && <AyudaView sectores={sectores} />}
     </div>
   );
 }
@@ -850,6 +856,434 @@ function ProgressBar({ pct, cumple }) {
       <span style={{ fontSize: '0.68rem', fontWeight: 800, color: cumple ? '#059669' : '#dc2626', minWidth: 32, textAlign: 'right' }}>
         {pct}%
       </span>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AYUDA VIEW — Documentación completa del sistema
+// ═══════════════════════════════════════════════════════════
+function AyudaView({ sectores }) {
+  const [openSection, setOpenSection] = useState(null);
+  const toggle = (id) => setOpenSection(openSection === id ? null : id);
+
+  const sectionStyle = { background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, marginBottom: '0.75rem', overflow: 'hidden', transition: 'all 0.2s ease' };
+  const headerStyle = (isOpen) => ({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', cursor: 'pointer', background: isOpen ? '#f8fafc' : 'white', borderBottom: isOpen ? '1px solid #e2e8f0' : 'none', transition: 'background 0.15s' });
+  const titleStyle = { fontSize: '0.92rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' };
+  const bodyStyle = { padding: '1.25rem', fontSize: '0.84rem', color: '#475569', lineHeight: 1.7 };
+  const labelStyle = { fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' };
+  const cardStyle = { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '1rem', marginBottom: '0.75rem' };
+  const badgeStyle = (bg, color) => ({ display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: bg, color, marginRight: '0.35rem' });
+
+  const sections = [
+    {
+      id: 'objetivo',
+      icon: '🎯',
+      title: '¿Qué es el Control de Horarios?',
+      content: (
+        <div>
+          <p style={{ marginBottom: '1rem' }}>
+            El <strong>Control de Horarios</strong> es el módulo de auditoría horaria para la <strong>Sede Santa Fe</strong> del Sanatorio Argentino.
+            Su objetivo principal es <strong>verificar que cada colaborador cumpla con la carga horaria semanal de 44 horas</strong>,
+            cruzando la información de las <strong>fichadas</strong> (registros reales de ingreso/egreso) con el
+            <strong> diagrama mensual</strong> (planificación de turnos).
+          </p>
+          <div style={cardStyle}>
+            <div style={labelStyle}>Flujo del sistema</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+              <span style={badgeStyle('#dbeafe', '#1E5FA6')}>1. Diagrama</span>
+              <span style={{ color: '#94a3b8' }}>→</span>
+              <span style={badgeStyle('#dcfce7', '#166534')}>2. Fichadas</span>
+              <span style={{ color: '#94a3b8' }}>→</span>
+              <span style={badgeStyle('#fef3c7', '#92400e')}>3. Cruce automático</span>
+              <span style={{ color: '#94a3b8' }}>→</span>
+              <span style={badgeStyle('#fae8ff', '#7c3aed')}>4. Auditoría</span>
+            </div>
+          </div>
+          <p>
+            El <strong>diagrama</strong> se carga al inicio de cada mes (PDF o imagen). Las <strong>fichadas</strong> se importan
+            desde el sistema del reloj biométrico. El sistema cruza ambos y genera reportes automáticos de cumplimiento.
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: 'reglas',
+      icon: '📏',
+      title: 'Reglas de Carga Horaria',
+      content: (
+        <div>
+          <div style={cardStyle}>
+            <div style={labelStyle}>Horas requeridas por día</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center' }}>
+              {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((dia, i) => {
+                const req = HORAS_REQUERIDAS_DIA[[1,2,3,4,5,6,0][i]];
+                return (
+                  <div key={dia} style={{ background: req > 0 ? '#dbeafe' : '#f1f5f9', padding: '0.75rem 0.5rem', borderRadius: 8 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#1e293b' }}>{dia}</div>
+                    <div style={{ fontWeight: 900, fontSize: '1.3rem', color: req > 0 ? '#1E5FA6' : '#94a3b8', marginTop: '0.25rem' }}>
+                      {req > 0 ? `${req}h` : '—'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div style={cardStyle}>
+              <div style={labelStyle}>Objetivo semanal</div>
+              <div style={{ fontWeight: 900, fontSize: '2rem', color: '#1E5FA6' }}>44 horas</div>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.25rem' }}>
+                Se suman las horas <strong>redondeadas</strong> de lunes a sábado.
+                El colaborador cumple si alcanza o supera las 44h semanales.
+              </p>
+            </div>
+            <div style={cardStyle}>
+              <div style={labelStyle}>Regla de redondeo</div>
+              <div style={{ fontWeight: 900, fontSize: '1.3rem', color: '#d97706' }}>45 min = 1 hora</div>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.25rem' }}>
+                Se cuenta 1 hora completa a partir de los 45 minutos trabajados.
+                Ejemplo: 3h30m computa <strong>3h</strong>, pero 3h45m computa <strong>4h</strong>.
+              </p>
+              <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', fontSize: '0.72rem' }}>
+                <div style={{ background: '#fef2f2', padding: '0.3rem 0.5rem', borderRadius: 6, textAlign: 'center' }}>
+                  <div style={{ color: '#dc2626' }}>8h 44m</div>
+                  <div style={{ fontWeight: 800, color: '#dc2626' }}>→ 8h</div>
+                </div>
+                <div style={{ background: '#dcfce7', padding: '0.3rem 0.5rem', borderRadius: 6, textAlign: 'center' }}>
+                  <div style={{ color: '#059669' }}>8h 45m</div>
+                  <div style={{ fontWeight: 800, color: '#059669' }}>→ 9h ✓</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'turnos',
+      icon: '🔄',
+      title: 'Tipos de Turnos del Diagrama',
+      content: (
+        <div>
+          <p style={{ marginBottom: '1rem' }}>
+            El diagrama mensual usa <strong>códigos de letra</strong> para asignar turnos a cada colaborador por día.
+            Cada turno tiene horarios y una duración determinada:
+          </p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, borderBottom: '2px solid #e2e8f0', color: '#1e293b' }}>Código</th>
+                  <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, borderBottom: '2px solid #e2e8f0', color: '#1e293b' }}>Turno</th>
+                  <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, borderBottom: '2px solid #e2e8f0', color: '#1e293b' }}>Horario</th>
+                  <th style={{ padding: '0.6rem 1rem', textAlign: 'center', fontWeight: 700, borderBottom: '2px solid #e2e8f0', color: '#1e293b' }}>Duración</th>
+                  <th style={{ padding: '0.6rem 1rem', textAlign: 'center', fontWeight: 700, borderBottom: '2px solid #e2e8f0', color: '#1e293b' }}>Computa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(TURNOS_DIAGRAMA).map(([key, t]) => (
+                  <tr key={key} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '0.5rem 1rem' }}>
+                      <span style={{ ...badgeStyle(t.color + '20', t.color), fontSize: '0.85rem', fontWeight: 900, padding: '0.25rem 0.7rem' }}>{key}</span>
+                    </td>
+                    <td style={{ padding: '0.5rem 1rem', fontWeight: 600 }}>{t.nombre}</td>
+                    <td style={{ padding: '0.5rem 1rem', fontFamily: "'Consolas', monospace" }}>
+                      {t.inicio && t.fin ? (
+                        <>{t.inicio} → {t.fin}
+                          {t.tramos && <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 2 }}>({t.tramos.map(tr => `${tr.inicio}-${tr.fin}`).join(' + ')})</div>}
+                        </>
+                      ) : <span style={{ color: '#94a3b8' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '0.5rem 1rem', textAlign: 'center', fontWeight: 600 }}>
+                      {t.totalMin > 0 ? `${Math.floor(t.totalMin / 60)}h ${t.totalMin % 60}m` : '—'}
+                    </td>
+                    <td style={{ padding: '0.5rem 1rem', textAlign: 'center' }}>
+                      {t.esLaboral
+                        ? <span style={{ fontWeight: 800, color: '#059669' }}>Sí</span>
+                        : <span style={{ color: '#94a3b8' }}>No</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ ...cardStyle, marginTop: '1rem', background: '#fffbeb', border: '1px solid #fde68a' }}>
+            <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '0.3rem' }}>💡 Turnos combinados</div>
+            <p style={{ fontSize: '0.78rem', color: '#92400e' }}>
+              Algunos colaboradores trabajan turnos combinados como <strong>M/S</strong> (Mañana + Siesta),
+              <strong> M/T</strong> (Mañana + Tarde) o <strong>S/T</strong> (Siesta + Tarde).
+              Estos se reflejan en el diagrama y el sistema los interpreta correctamente.
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'diagrama',
+      icon: '📋',
+      title: '¿Cómo funciona el Diagrama?',
+      content: (
+        <div>
+          <p style={{ marginBottom: '1rem' }}>
+            El <strong>diagrama</strong> es la planificación mensual de turnos de cada sector.
+            Se recibe al inicio de cada mes en formato <strong>PDF</strong> (preferido) o <strong>imagen</strong>.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div style={cardStyle}>
+              <div style={labelStyle}>¿Quién lo envía?</div>
+              <p style={{ fontSize: '0.8rem' }}>El/la responsable de cada sector envía el diagrama al equipo de RRHH antes del inicio del mes.</p>
+            </div>
+            <div style={cardStyle}>
+              <div style={labelStyle}>¿Qué contiene?</div>
+              <p style={{ fontSize: '0.8rem' }}>Una grilla con cada colaborador y su turno asignado para cada día del mes (M, T, S, C, R, V, L).</p>
+            </div>
+            <div style={cardStyle}>
+              <div style={labelStyle}>Formato preferido</div>
+              <p style={{ fontSize: '0.8rem' }}>
+                <span style={badgeStyle('#dcfce7', '#166534')}>✅ PDF</span>
+                Permite lectura automática por el sistema.
+              </p>
+              <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
+                <span style={badgeStyle('#fef3c7', '#92400e')}>⚠️ Imagen</span>
+                Requiere carga manual pero es aceptable.
+              </p>
+            </div>
+            <div style={cardStyle}>
+              <div style={labelStyle}>Datos en el diagrama</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.8rem' }}>
+                <li>Nombre de cada colaborador</li>
+                <li>Turno asignado por día (código)</li>
+                <li>Días feriados marcados (amarillo)</li>
+                <li>Observaciones (vacaciones, recargos, cumpleaños)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'fichadas',
+      icon: '⏰',
+      title: '¿Cómo funcionan las Fichadas?',
+      content: (
+        <div>
+          <p style={{ marginBottom: '1rem' }}>
+            Las <strong>fichadas</strong> son los registros reales de ingreso y egreso de cada colaborador,
+            capturados por el <strong>sistema de reloj biométrico</strong>.
+          </p>
+          <div style={cardStyle}>
+            <div style={labelStyle}>Datos de cada fichada</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+              {[
+                { label: 'Hora de Ingreso', icon: '🟢', desc: 'Cuando marca al entrar' },
+                { label: 'Hora de Egreso', icon: '🔴', desc: 'Cuando marca al salir' },
+                { label: 'Horas trabajadas', icon: '⏱', desc: 'Calculadas automáticamente' },
+              ].map(item => (
+                <div key={item.label} style={{ background: '#f8fafc', padding: '0.6rem', borderRadius: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.3rem' }}>{item.icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.78rem', marginTop: '0.2rem' }}>{item.label}</div>
+                  <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.15rem' }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ ...cardStyle, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+            <div style={{ fontWeight: 700, color: '#1E5FA6', marginBottom: '0.3rem' }}>ℹ️ Importante</div>
+            <p style={{ fontSize: '0.78rem', color: '#1e40af' }}>
+              Las fichadas se importan desde el módulo <strong>"Control de Fichadas"</strong> en la barra lateral.
+              Este módulo de Control Horario <strong>lee esos datos automáticamente</strong> — no es necesario cargarlos dos veces.
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'vistas',
+      icon: '👁️',
+      title: 'Guía de cada Vista',
+      content: (
+        <div>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {[
+              {
+                tab: '📊 Resumen', desc: 'Dashboard principal',
+                details: 'Muestra KPIs generales (colaboradores que cumplen/no cumplen 44h), cards por sector con el badge semanal de cada persona, y permite filtrar por sector haciendo click en las cards.',
+              },
+              {
+                tab: '📅 Vista Semanal', desc: 'Grilla de horas día a día',
+                details: 'Muestra cada colaborador con sus horas redondeadas por día (Lun-Dom). Celdas verdes = cumple, rojas = no cumple. Columna final muestra el total semanal vs 44h. Filtro por sector y navegación de semanas.',
+              },
+              {
+                tab: '⏰ Fichadas', desc: 'Tabla detallada de registros',
+                details: 'Tabla con cada registro de fichada: hora real, hora redondeada, horas requeridas, y si cumple o no. Incluye tabla resumen semanal con barra de progreso. Se puede editar fichadas manualmente.',
+              },
+              {
+                tab: '🔍 Auditoría', desc: 'Control por sector',
+                details: 'Vista de auditoría organizada por sector. Para cada colaborador muestra las horas trabajadas día por día, el total semanal y un ✅/❌ de cumplimiento de 44h. Los días con déficit se resaltan en rojo.',
+              },
+              {
+                tab: '❓ Ayuda', desc: 'Documentación (esta sección)',
+                details: 'Explica cómo funciona cada parte del sistema, las reglas de negocio, los turnos, y responde preguntas frecuentes.',
+              },
+            ].map(v => (
+              <div key={v.tab} style={cardStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{v.tab}</span>
+                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>— {v.desc}</span>
+                </div>
+                <p style={{ fontSize: '0.78rem', margin: 0 }}>{v.details}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'sectores',
+      icon: '🏥',
+      title: 'Sectores y Colaboradores',
+      content: (
+        <div>
+          <p style={{ marginBottom: '1rem' }}>
+            El sistema controla los siguientes sectores de la <strong>Sede Santa Fe</strong>:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '0.75rem' }}>
+            {sectores.map(s => (
+              <div key={s.id} style={{ ...cardStyle, borderLeft: `4px solid ${s.color}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '1rem' }}>{SECTOR_ICONS[s.nombre] || '📁'}</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.85rem', color: s.color }}>{s.nombre}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ ...cardStyle, marginTop: '1rem', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+            <div style={{ fontWeight: 700, color: '#1E5FA6', marginBottom: '0.3rem' }}>ℹ️ Nota sobre Guardias de Seguridad</div>
+            <p style={{ fontSize: '0.78rem', color: '#1e40af' }}>
+              Los guardias de seguridad (Julio Gómez, David Torres) pueden no aparecer en las fichadas
+              ya que no siempre utilizan el sistema de reloj biométrico. Su control se realiza por otro medio.
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'indicadores',
+      icon: '🚦',
+      title: 'Indicadores Visuales',
+      content: (
+        <div>
+          <div style={labelStyle}>Colores en la grilla semanal</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
+            {[
+              { bg: '#dcfce7', border: '#bbf7d0', label: 'Cumple las horas del día', icon: '✅' },
+              { bg: '#fef2f2', border: '#fecaca', label: 'No cumple — tiene déficit', icon: '⚠️' },
+              { bg: '#f1f5f9', border: '#e2e8f0', label: 'Día no laboral (Domingo/Franco)', icon: '🔲' },
+              { bg: '#fafafa', border: '#e5e7eb', label: 'Sin datos / Sin fichada', icon: '—' },
+            ].map(item => (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.8rem', background: item.bg, border: `1px solid ${item.border}`, borderRadius: 8 }}>
+                <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div style={labelStyle}>Badge semanal del colaborador</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+            <div style={{ background: '#dcfce7', padding: '0.75rem', borderRadius: 8, textAlign: 'center' }}>
+              <div style={{ fontWeight: 900, fontSize: '1.1rem', color: '#059669' }}>44h ✓</div>
+              <div style={{ fontSize: '0.68rem', color: '#166534', marginTop: '0.15rem' }}>Cumple la semana</div>
+            </div>
+            <div style={{ background: '#fef2f2', padding: '0.75rem', borderRadius: 8, textAlign: 'center' }}>
+              <div style={{ fontWeight: 900, fontSize: '1.1rem', color: '#dc2626' }}>38h ✗</div>
+              <div style={{ fontSize: '0.68rem', color: '#991b1b', marginTop: '0.15rem' }}>Déficit: -6h</div>
+            </div>
+            <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: 8, textAlign: 'center' }}>
+              <div style={{ fontWeight: 900, fontSize: '1.1rem', color: '#94a3b8' }}>0h</div>
+              <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.15rem' }}>Sin registros</div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'faq',
+      icon: '💬',
+      title: 'Preguntas Frecuentes',
+      content: (
+        <div style={{ display: 'grid', gap: '0.6rem' }}>
+          {[
+            { q: '¿Por qué un colaborador aparece con 0 horas?', a: 'No tiene fichadas cargadas para esa semana. Verificar en el módulo "Control de Fichadas" que el PDF del período esté importado.' },
+            { q: '¿Si trabaja 8h50m un lunes, cumple las 9h?', a: 'Sí. La regla de redondeo dice que desde 45 minutos se cuenta 1 hora completa. 8h50m → 9h redondeadas. ✅ Cumple.' },
+            { q: '¿Si trabaja 8h30m un lunes, cumple?', a: 'No. 8h30m → 8h redondeadas. Necesita 9h para lunes. Queda con déficit de 1h. ❌ No cumple ese día.' },
+            { q: '¿Si un día no cumple pero en la semana llega a 44h?', a: 'Lo importante es la suma semanal de 44h. Si un día trabaja menos pero otro trabaja más y la suma da ≥44h, cumple la semana.' },
+            { q: '¿Cómo se cargan las fichadas?', a: 'Desde el módulo "Control de Fichadas" en la barra lateral. Se importa el PDF del reloj biométrico y el sistema extrae automáticamente los datos.' },
+            { q: '¿Por qué no aparecen los guardias de seguridad?', a: 'Los guardias no siempre fichan en el sistema biométrico. Su control horario se realiza por otro mecanismo.' },
+            { q: '¿Qué pasa con los sábados?', a: 'Los sábados la carga horaria es de 4h. Generalmente de 08:00 a 12:00 (turno mañana corto). No todos los colaboradores trabajan sábados — depende del diagrama.' },
+            { q: '¿Cómo se maneja el turno cortado (C)?', a: 'El turno cortado tiene dos tramos: 08:00-12:00 y 17:00-21:00 = 8h totales. El sistema suma ambos tramos.' },
+          ].map((item, i) => (
+            <div key={i} style={cardStyle}>
+              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem', marginBottom: '0.25rem' }}>❓ {item.q}</div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569' }}>{item.a}</p>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ animation: 'chFadeIn 0.3s ease-out', maxWidth: 900, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ fontSize: '2.5rem', marginBottom: '0.25rem' }}>📖</div>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1e293b', marginBottom: '0.25rem' }}>Centro de Ayuda</h2>
+        <p style={{ fontSize: '0.82rem', color: '#64748b' }}>Documentación completa del sistema de Control de Horarios — Sede Santa Fe</p>
+      </div>
+
+      {/* Quick nav */}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '1.25rem' }}>
+        {sections.map(s => (
+          <button
+            key={s.id}
+            onClick={() => { toggle(s.id); document.getElementById(`ayuda-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+            style={{
+              padding: '0.35rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0',
+              background: openSection === s.id ? '#1E5FA6' : 'white',
+              color: openSection === s.id ? 'white' : '#475569',
+              fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            {s.icon} {s.title}
+          </button>
+        ))}
+      </div>
+
+      {/* Accordion sections */}
+      {sections.map(s => (
+        <div key={s.id} id={`ayuda-${s.id}`} style={sectionStyle}>
+          <div style={headerStyle(openSection === s.id)} onClick={() => toggle(s.id)}>
+            <span style={titleStyle}>
+              <span>{s.icon}</span>
+              {s.title}
+            </span>
+            <span style={{ fontSize: '1.1rem', color: '#94a3b8', transition: 'transform 0.2s', transform: openSection === s.id ? 'rotate(180deg)' : 'rotate(0)' }}>
+              ▾
+            </span>
+          </div>
+          {openSection === s.id && (
+            <div style={bodyStyle}>{s.content}</div>
+          )}
+        </div>
+      ))}
+
+      {/* Footer */}
+      <div style={{ textAlign: 'center', padding: '1.5rem 0', fontSize: '0.72rem', color: '#94a3b8', borderTop: '1px solid #f1f5f9', marginTop: '1rem' }}>
+        <p>Módulo de Control de Horarios — Sede Santa Fe</p>
+        <p>Sanatorio Argentino SRL · RRHH · Innovación y Transformación Digital</p>
+        <p style={{ marginTop: '0.25rem' }}>Última actualización: Abril 2026</p>
+      </div>
     </div>
   );
 }
