@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   listarSectores,
   listarColaboradores,
   cruzarDiagramaVsFichadas,
   calcularEstadisticas,
   calcularEstadisticasPorSector,
-  guardarFichada,
   getWeekRange,
   getMonthRange,
   formatTime,
@@ -23,6 +22,13 @@ import {
   getHorasRequeridas,
   evaluarCumplimientoDiario,
   evaluarCumplimientoSemanal,
+  // ─── Diagramas (upload/list) ───
+  subirDiagrama,
+  listarDiagramasArchivos,
+  obtenerUrlDiagrama,
+  eliminarDiagrama,
+  formatFileSize,
+  getNombreMes,
 } from './controlHorarioService';
 import './controlhorario.css';
 
@@ -151,6 +157,7 @@ export default function ControlHorarioApp({ embedded = false, initialTab = 'resu
           { id: 'resumen', icon: '📊', label: 'Resumen' },
           { id: 'semanal', icon: '📅', label: 'Vista Semanal' },
           { id: 'fichadas', icon: '⏰', label: 'Fichadas' },
+          { id: 'diagrama', icon: '📁', label: 'Diagrama' },
           { id: 'auditoria', icon: '🔍', label: 'Auditoría' },
           { id: 'ayuda', icon: '❓', label: 'Ayuda' },
         ].map(tab => (
@@ -183,6 +190,7 @@ export default function ControlHorarioApp({ embedded = false, initialTab = 'resu
       {activeTab === 'resumen' && <ResumenView stats={stats} sectorStats={sectorStats} sectores={sectores} selectedSector={selectedSector} onSelectSector={setSelectedSector} cruceData={cruceData} weeklyEvals={weeklyEvals} filteredCruce={filteredCruce} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
       {activeTab === 'semanal' && <SemanalView filteredCruce={filteredCruce} weekDays={weekDays} today={today} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} sectores={sectores} selectedSector={selectedSector} onSelectSector={setSelectedSector} weeklyEvals={weeklyEvals} loading={loading} />}
       {activeTab === 'fichadas' && <FichadasView filteredCruce={filteredCruce} weekDays={weekDays} today={today} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} sectores={sectores} selectedSector={selectedSector} onSelectSector={setSelectedSector} weeklyEvals={weeklyEvals} onReload={loadData} loading={loading} />}
+      {activeTab === 'diagrama' && <DiagramaView sectores={sectores} />}
       {activeTab === 'auditoria' && <AuditoriaView sectorStats={sectorStats} sectores={sectores} cruceData={cruceData} dateRange={dateRange} weekLabel={weekLabel} weekOffset={weekOffset} setWeekOffset={setWeekOffset} weeklyEvals={weeklyEvals} filteredCruce={filteredCruce} />}
       {activeTab === 'ayuda' && <AyudaView sectores={sectores} />}
     </div>
@@ -856,6 +864,411 @@ function ProgressBar({ pct, cumple }) {
       <span style={{ fontSize: '0.68rem', fontWeight: 800, color: cumple ? '#059669' : '#dc2626', minWidth: 32, textAlign: 'right' }}>
         {pct}%
       </span>
+    </div>
+  );
+}
+// ═══════════════════════════════════════════════════════════
+//  DIAGRAMA VIEW — Upload y gestión de PDFs de diagrama
+// ═══════════════════════════════════════════════════════════
+function DiagramaView({ sectores }) {
+  const [diagramas, setDiagramas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewName, setPreviewName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+
+  // Filtros
+  const [filtroSector, setFiltroSector] = useState('');
+  const now = new Date();
+  const [filtroAnio, setFiltroAnio] = useState(now.getFullYear());
+  
+  // Form de upload
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [formSector, setFormSector] = useState('');
+  const [formMes, setFormMes] = useState(now.getMonth() + 1);
+  const [formAnio, setFormAnio] = useState(now.getFullYear());
+  const [formObs, setFormObs] = useState('');
+  const fileInputRef = useRef(null);
+
+  const loadDiagramas = useCallback(async () => {
+    try {
+      setLoading(true);
+      const filtros = {};
+      if (filtroSector) filtros.sector = filtroSector;
+      if (filtroAnio) filtros.anio = filtroAnio;
+      const data = await listarDiagramasArchivos(filtros);
+      setDiagramas(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filtroSector, filtroAnio]);
+
+  useEffect(() => { loadDiagramas(); }, [loadDiagramas]);
+
+  const handleFileSelect = (file) => {
+    if (!file) return;
+    const valid = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+    if (!valid.includes(file.type)) {
+      setError('Solo se permiten archivos PDF, PNG, JPG o WEBP');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('El archivo no puede exceder 10MB');
+      return;
+    }
+    setSelectedFile(file);
+    setError(null);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleFileSelect(file);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return setError('Seleccioná un archivo');
+    if (!formSector) return setError('Seleccioná un sector');
+    if (!formMes || !formAnio) return setError('Seleccioná mes y año');
+
+    try {
+      setUploading(true);
+      setError(null);
+      await subirDiagrama({
+        file: selectedFile,
+        sector: formSector,
+        mes: formMes,
+        anio: formAnio,
+        observaciones: formObs,
+      });
+      setSuccess(`✅ Diagrama "${selectedFile.name}" subido para ${formSector} — ${getNombreMes(formMes)} ${formAnio}`);
+      setSelectedFile(null);
+      setFormObs('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await loadDiagramas();
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (diagrama) => {
+    if (!confirm(`¿Eliminar el diagrama "${diagrama.nombre_archivo}"?`)) return;
+    try {
+      await eliminarDiagrama(diagrama.id, diagrama.storage_path);
+      await loadDiagramas();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handlePreview = (diagrama) => {
+    const url = obtenerUrlDiagrama(diagrama.storage_path);
+    setPreviewUrl(url);
+    setPreviewName(diagrama.nombre_archivo);
+  };
+
+  const cardStyle = { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '1rem' };
+  const labelStyle = { fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.3rem', display: 'block' };
+  const selectStyle = { width: '100%', padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', background: 'white', color: '#1e293b', fontWeight: 600 };
+  const inputStyle = { ...selectStyle };
+
+  return (
+    <div style={{ animation: 'chFadeIn 0.3s ease-out' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            📁 Diagramas Mensuales
+          </h2>
+          <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '0.15rem 0 0' }}>
+            Cargá el diagrama de turnos de cada sector (PDF o imagen) indicando sector y mes
+          </p>
+        </div>
+      </div>
+
+      {/* Mensajes */}
+      {error && (
+        <div style={{ padding: '0.65rem 1rem', borderRadius: 10, marginBottom: '0.75rem', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>❌ {error}</span>
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+        </div>
+      )}
+      {success && (
+        <div style={{ padding: '0.65rem 1rem', borderRadius: 10, marginBottom: '0.75rem', background: '#dcfce7', border: '1px solid #bbf7d0', color: '#166534', fontSize: '0.8rem' }}>
+          {success}
+        </div>
+      )}
+
+      {/* ─── UPLOAD SECTION ─── */}
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', marginBottom: '1rem' }}>
+        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          📤 Subir nuevo diagrama
+        </div>
+
+        {/* Row 1: Sector + Mes + Año */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div>
+            <label style={labelStyle}>SECTOR *</label>
+            <select value={formSector} onChange={e => setFormSector(e.target.value)} style={selectStyle}>
+              <option value="">— Seleccionar sector —</option>
+              {sectores.map(s => (
+                <option key={s.id} value={s.nombre}>{SECTOR_ICONS[s.nombre] || '📁'} {s.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>MES *</label>
+            <select value={formMes} onChange={e => setFormMes(Number(e.target.value))} style={selectStyle}>
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>{getNombreMes(i + 1)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>AÑO *</label>
+            <select value={formAnio} onChange={e => setFormAnio(Number(e.target.value))} style={selectStyle}>
+              {[2025, 2026, 2027].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Row 2: File drop zone */}
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragOver ? '#1E5FA6' : selectedFile ? '#22c55e' : '#cbd5e1'}`,
+            borderRadius: 10,
+            padding: '1.5rem',
+            textAlign: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            background: dragOver ? '#eff6ff' : selectedFile ? '#f0fdf4' : '#fafafa',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp"
+            onChange={e => handleFileSelect(e.target.files?.[0])}
+            style={{ display: 'none' }}
+          />
+          {selectedFile ? (
+            <div>
+              <div style={{ fontSize: '2rem', marginBottom: '0.3rem' }}>
+                {selectedFile.type === 'application/pdf' ? '📄' : '🖼️'}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#166534' }}>{selectedFile.name}</div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem' }}>
+                {formatFileSize(selectedFile.size)} · {selectedFile.type}
+              </div>
+              <button
+                onClick={e => { e.stopPropagation(); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              >
+                ✕ Cambiar archivo
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.3rem', opacity: 0.5 }}>📁</div>
+              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#475569' }}>
+                Arrastrá un archivo aquí o hacé click para seleccionar
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                PDF, PNG, JPG · Máximo 10MB
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Row 3: Observaciones + Submit */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+          <div>
+            <label style={labelStyle}>OBSERVACIONES (opcional)</label>
+            <input
+              type="text"
+              value={formObs}
+              onChange={e => setFormObs(e.target.value)}
+              placeholder="Ej: Diagrama corregido, incluye feriado 25/03..."
+              style={inputStyle}
+            />
+          </div>
+          <button
+            onClick={handleUpload}
+            disabled={uploading || !selectedFile || !formSector}
+            style={{
+              padding: '0.55rem 1.5rem', borderRadius: 8, border: 'none',
+              background: uploading || !selectedFile || !formSector ? '#cbd5e1' : '#1E5FA6',
+              color: 'white', fontWeight: 700, fontSize: '0.82rem', cursor: uploading ? 'wait' : 'pointer',
+              transition: 'all 0.15s', whiteSpace: 'nowrap',
+            }}
+          >
+            {uploading ? '⏳ Subiendo...' : '📤 Subir diagrama'}
+          </button>
+        </div>
+      </div>
+
+      {/* ─── FILTROS + LISTADO ─── */}
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            📋 Diagramas cargados
+            <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#94a3b8' }}>({diagramas.length})</span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <select value={filtroSector} onChange={e => setFiltroSector(e.target.value)} style={{ ...selectStyle, width: 'auto', fontSize: '0.75rem', padding: '0.35rem 0.6rem' }}>
+              <option value="">Todos los sectores</option>
+              {sectores.map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
+            </select>
+            <select value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ ...selectStyle, width: 'auto', fontSize: '0.75rem', padding: '0.35rem 0.6rem' }}>
+              {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.3rem' }}>⏳</div>
+            Cargando diagramas...
+          </div>
+        ) : diagramas.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem', opacity: 0.4 }}>📭</div>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Sin diagramas cargados</div>
+            <div style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>Subí el primer diagrama usando el formulario de arriba</div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {diagramas.map(d => {
+              const sectorColor = SECTOR_COLORS[d.sector] || '#94a3b8';
+              const isPdf = d.tipo_archivo === 'application/pdf';
+              return (
+                <div key={d.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.75rem 1rem', background: '#f8fafc',
+                  border: '1px solid #e2e8f0', borderRadius: 10,
+                  borderLeft: `4px solid ${sectorColor}`,
+                  transition: 'all 0.15s',
+                }}>
+                  {/* Icon */}
+                  <div style={{ fontSize: '1.5rem', flexShrink: 0 }}>
+                    {isPdf ? '📄' : '🖼️'}
+                  </div>
+
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {d.nombre_archivo}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.15rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: sectorColor, background: sectorColor + '15', padding: '0.1rem 0.4rem', borderRadius: 4 }}>
+                        {d.sector}
+                      </span>
+                      <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>
+                        {getNombreMes(d.periodo_mes)} {d.periodo_anio}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>
+                        {formatFileSize(d.tamano_bytes)}
+                      </span>
+                      {d.observaciones && (
+                        <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                          — {d.observaciones}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+                    <button
+                      onClick={() => handlePreview(d)}
+                      title="Ver diagrama"
+                      style={{ padding: '0.35rem 0.6rem', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: '0.78rem', transition: 'all 0.15s' }}
+                    >
+                      👁️ Ver
+                    </button>
+                    <button
+                      onClick={() => { const url = obtenerUrlDiagrama(d.storage_path); if (url) window.open(url, '_blank'); }}
+                      title="Descargar"
+                      style={{ padding: '0.35rem 0.6rem', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: '0.78rem' }}
+                    >
+                      ⬇️
+                    </button>
+                    <button
+                      onClick={() => handleDelete(d)}
+                      title="Eliminar"
+                      style={{ padding: '0.35rem 0.6rem', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', fontSize: '0.78rem', color: '#dc2626' }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ─── PREVIEW MODAL ─── */}
+      {previewUrl && (
+        <div
+          onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999, padding: '2rem',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: 16, width: '90vw', maxWidth: 900,
+              height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1.25rem', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>📄 {previewName}</div>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <button
+                  onClick={() => window.open(previewUrl, '_blank')}
+                  style={{ padding: '0.3rem 0.7rem', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                >
+                  ↗ Abrir en nueva pestaña
+                </button>
+                <button
+                  onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
+                  style={{ padding: '0.3rem 0.6rem', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: '1rem', fontWeight: 600, lineHeight: 1 }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              {previewUrl.endsWith('.pdf') || previewName.endsWith('.pdf') ? (
+                <iframe src={previewUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="Preview" />
+              ) : (
+                <img src={previewUrl} alt={previewName} style={{ width: '100%', objectFit: 'contain' }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

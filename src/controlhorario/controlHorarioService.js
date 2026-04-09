@@ -425,7 +425,137 @@ export function getMonthRange(year, month) {
   };
 }
 
-// Legacy compat — guardarFichada not needed since we read from fichadas_registros
-export async function guardarFichada() {
-  console.warn('[ControlHorario] guardarFichada no disponible — usar módulo de Fichadas');
+// ═══════════════════════════════════════════════════════════
+//  DIAGRAMAS — Upload/Download de PDFs por sector/mes
+// ═══════════════════════════════════════════════════════════
+
+const BUCKET_NAME = 'diagramas';
+
+/**
+ * Sube un archivo de diagrama (PDF/imagen) a Supabase Storage
+ * y registra los metadatos en ch_diagramas_archivos.
+ */
+export async function subirDiagrama({ file, sector, mes, anio, observaciones }) {
+  // 1. Sanitize sector name for path
+  const sectorPath = sector.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  const ext = file.name.split('.').pop() || 'pdf';
+  const storagePath = `${sectorPath}/${anio}-${String(mes).padStart(2, '0')}/${Date.now()}.${ext}`;
+
+  // 2. Upload to storage  
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET_NAME)
+    .upload(storagePath, file, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('[Diagrama] Upload error:', uploadError);
+    throw new Error(`Error al subir archivo: ${uploadError.message}`);
+  }
+
+  // 3. Save metadata
+  const { data, error: metaError } = await supabase
+    .from('ch_diagramas_archivos')
+    .insert({
+      sector,
+      periodo_mes: mes,
+      periodo_anio: anio,
+      nombre_archivo: file.name,
+      storage_path: storagePath,
+      tipo_archivo: file.type || 'application/pdf',
+      tamano_bytes: file.size,
+      observaciones: observaciones || null,
+    })
+    .select()
+    .single();
+
+  if (metaError) {
+    console.error('[Diagrama] Metadata error:', metaError);
+    // Intentar borrar el archivo si falla el metadata
+    await supabase.storage.from(BUCKET_NAME).remove([storagePath]);
+    throw new Error(`Error al guardar metadatos: ${metaError.message}`);
+  }
+
+  return data;
 }
+
+/**
+ * Lista los diagramas subidos, filtrables por sector y período.
+ */
+export async function listarDiagramasArchivos(filtros = {}) {
+  let query = supabase
+    .from('ch_diagramas_archivos')
+    .select('*')
+    .order('periodo_anio', { ascending: false })
+    .order('periodo_mes', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (filtros.sector) query = query.eq('sector', filtros.sector);
+  if (filtros.mes) query = query.eq('periodo_mes', filtros.mes);
+  if (filtros.anio) query = query.eq('periodo_anio', filtros.anio);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Obtiene la URL pública de un diagrama para previsualización.
+ */
+export function obtenerUrlDiagrama(storagePath) {
+  const { data } = supabase.storage
+    .from(BUCKET_NAME)
+    .getPublicUrl(storagePath);
+  return data?.publicUrl || null;
+}
+
+/**
+ * Descarga un diagrama del storage.
+ */
+export async function descargarDiagrama(storagePath) {
+  const { data, error } = await supabase.storage
+    .from(BUCKET_NAME)
+    .download(storagePath);
+
+  if (error) throw error;
+  return data; // Blob
+}
+
+/**
+ * Elimina un diagrama (storage + metadatos).
+ */
+export async function eliminarDiagrama(id, storagePath) {
+  // 1. Delete from storage
+  const { error: storageError } = await supabase.storage
+    .from(BUCKET_NAME)
+    .remove([storagePath]);
+
+  if (storageError) {
+    console.warn('[Diagrama] Storage delete warning:', storageError.message);
+  }
+
+  // 2. Delete metadata
+  const { error } = await supabase
+    .from('ch_diagramas_archivos')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────
+export function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let size = bytes;
+  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+  return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+export function getNombreMes(mes) {
+  return MESES[(mes - 1)] || '';
+}
+
