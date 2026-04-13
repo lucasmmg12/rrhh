@@ -10,6 +10,7 @@ export const SECTORES = [
   { value: 'santa_fe_sector_2', label: 'Sede Santa Fe - Sector 2' },
   { value: 'dxi', label: 'DXI (Mamografía, Densitometría, Ecografías y RX)' },
   { value: 'citologia', label: 'Citología' },
+  { value: 'auxiliares_hoteleria', label: 'Auxiliares de Hotelería' },
   { value: 'seguridad_patrimonial', label: 'Seguridad Patrimonial' },
 ];
 
