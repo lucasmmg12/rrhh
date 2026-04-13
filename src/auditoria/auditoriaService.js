@@ -8,7 +8,7 @@ import { supabase } from '../supabaseClient';
 export const SECTORES = [
   { value: 'santa_fe_sector_1', label: 'Sede Santa Fe - Sector 1' },
   { value: 'santa_fe_sector_2', label: 'Sede Santa Fe - Sector 2' },
-  { value: 'dxi', label: 'DXI (Mamografía y Densitometría)' },
+  { value: 'dxi', label: 'DXI (Mamografía, Densitometría, Ecografías y RX)' },
   { value: 'citologia', label: 'Citología' },
   { value: 'seguridad_patrimonial', label: 'Seguridad Patrimonial' },
 ];
