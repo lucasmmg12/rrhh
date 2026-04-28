@@ -38,6 +38,7 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
         if (node) {
             setEditForm({
                 ...node,
+                name: node.name || '',
                 tasks: node.tasks ? node.tasks.join('\n') : ''
             });
             setIsEditing(false);
@@ -219,7 +220,7 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
                             <input
                                 type="text"
                                 name="name"
-                                value={editForm.name}
+                                value={editForm.name || ''}
                                 onChange={handleInputChange}
                                 style={inputStyle}
                                 placeholder="Nombre completo"

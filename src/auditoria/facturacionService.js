@@ -9,20 +9,38 @@ import { supabase } from '../supabaseClient';
  * Obtiene toda la facturación de un rango de fechas
  */
 export async function obtenerFacturacion(fechaDesde, fechaHasta, turno = null) {
-  let query = supabase
-    .from('facturacion_sede')
-    .select('*')
-    .gte('fecha', fechaDesde)
-    .lte('fecha', fechaHasta)
-    .order('fecha', { ascending: false });
+  // Supabase limits to 1000 rows by default — PAGE_SIZE must be <= that limit
+  const PAGE_SIZE = 1000;
+  let allData = [];
+  let from = 0;
+  let hasMore = true;
 
-  if (turno && turno !== 'todos') {
-    query = query.eq('turno', turno);
+  while (hasMore) {
+    let query = supabase
+      .from('facturacion_sede')
+      .select('*')
+      .gte('fecha', fechaDesde)
+      .lte('fecha', fechaHasta)
+      .order('fecha', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (turno && turno !== 'todos') {
+      query = query.eq('turno', turno);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      hasMore = false;
+    } else {
+      allData = allData.concat(data);
+      from += PAGE_SIZE;
+      if (data.length < PAGE_SIZE) hasMore = false;
+    }
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
+  return allData;
 }
 
 /**

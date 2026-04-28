@@ -10,8 +10,8 @@ import { supabase } from '../supabaseClient';
  * Obtiene visitas para un rango de fechas
  */
 export async function obtenerVisitas(fechaDesde, fechaHasta) {
-  // Supabase limits to 1000 rows by default, so we paginate to get ALL
-  const PAGE_SIZE = 5000;
+  // Supabase limits to 1000 rows by default — PAGE_SIZE must be <= that limit
+  const PAGE_SIZE = 1000;
   let allData = [];
   let from = 0;
   let hasMore = true;
