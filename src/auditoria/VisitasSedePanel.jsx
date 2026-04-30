@@ -3,7 +3,7 @@
  * v2: + Obras Sociales, + Responsables/Médicos, + Heatmap semanal, + Sync
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { obtenerVisitas, calcularMetricasVisitas, triggerSync, checkSyncHealth } from './visitasService';
+import { obtenerVisitas, calcularMetricasVisitas, calcularMetricasPorSector, triggerSync, checkSyncHealth } from './visitasService';
 
 const CHART_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -22,7 +22,7 @@ export default function VisitasSedePanel() {
   const [fechaRef, setFechaRef] = useState(new Date().toISOString().split('T')[0]);
   const [rangoDesde, setRangoDesde] = useState('');
   const [rangoHasta, setRangoHasta] = useState('');
-  const [vistaActiva, setVistaActiva] = useState('usuarios');
+  const [vistaActiva, setVistaActiva] = useState('sectores');
 
   // Sync state
   const [syncing, setSyncing] = useState(false);
@@ -84,6 +84,7 @@ export default function VisitasSedePanel() {
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
   const metricas = useMemo(() => calcularMetricasVisitas(datos), [datos]);
+  const sectorData = useMemo(() => calcularMetricasPorSector(datos), [datos]);
 
   // ── Datos ordenados ──
   const usuarios = useMemo(() =>
@@ -275,6 +276,7 @@ export default function VisitasSedePanel() {
       {/* ── Vista Tabs ── */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '1rem', overflowX: 'auto' }}>
         {[
+          { id: 'sectores', label: '🏢 Por Sector' },
           { id: 'usuarios', label: '👤 Colaborador' },
           { id: 'cierre', label: '📊 Cierre Diario' },
           { id: 'especialidades', label: '🩺 Especialidad' },
@@ -314,6 +316,11 @@ export default function VisitasSedePanel() {
         </div>
       ) : (
         <>
+          {/* ── VISTA: POR SECTOR ── */}
+          {vistaActiva === 'sectores' && (
+            <VistaPorSector sectorData={sectorData} totalVisitas={metricas.total_visitas} />
+          )}
+
           {/* ── VISTA: POR COLABORADOR ── */}
           {vistaActiva === 'usuarios' && (
             <div className="aud-card" style={{ padding: '1rem' }}>
@@ -810,6 +817,222 @@ export default function VisitasSedePanel() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VISTA: POR SECTOR OPERATIVO
+// ═══════════════════════════════════════════════════════════════
+function VistaPorSector({ sectorData, totalVisitas }) {
+  const [expandedSector, setExpandedSector] = useState(null);
+  const maxTotal = Math.max(...sectorData.map(s => s.total), 1);
+
+  const SECTOR_ICONS = {
+    'SECTOR 1': '1️⃣',
+    'SECTOR 2': '2️⃣',
+    'CITOLOGÍA': '🔬',
+    'DIAGNÓSTICO': '📡',
+    'OTROS': '📋',
+    'SIN SECTOR': '❓',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+      {/* Resumen rápido */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: `repeat(${Math.min(sectorData.length, 4)}, 1fr)`,
+        gap: '0.65rem', marginBottom: '0.5rem',
+      }}>
+        {sectorData.filter(s => s.nombre !== 'OTROS' && s.nombre !== 'SIN SECTOR').map(sector => {
+          const pct = totalVisitas > 0 ? Math.round((sector.total / totalVisitas) * 100) : 0;
+          return (
+            <div
+              key={sector.nombre}
+              onClick={() => setExpandedSector(expandedSector === sector.nombre ? null : sector.nombre)}
+              style={{
+                padding: '0.85rem', borderRadius: '12px', cursor: 'pointer',
+                background: expandedSector === sector.nombre ? `${sector.color}15` : 'white',
+                border: `2px solid ${expandedSector === sector.nombre ? sector.color : '#f1f5f9'}`,
+                transition: 'all 0.2s',
+                boxShadow: expandedSector === sector.nombre ? `0 4px 16px ${sector.color}20` : '0 1px 3px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '1.2rem' }}>{SECTOR_ICONS[sector.nombre] || '📋'}</span>
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700, color: sector.color,
+                  padding: '2px 8px', borderRadius: '10px', background: `${sector.color}15`,
+                }}>{pct}%</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {sector.nombre}
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: sector.color, lineHeight: 1.1, marginTop: '0.15rem' }}>
+                {formatNumber(sector.total)}
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                {sector.usuarios.length} colaboradores · ~{sector.promedio_diario}/día
+              </div>
+              {/* Mini progress */}
+              <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '2px', marginTop: '0.5rem', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: '2px',
+                  background: `linear-gradient(90deg, ${sector.color}, ${sector.color}80)`,
+                  width: `${(sector.total / maxTotal) * 100}%`,
+                  transition: 'width 0.6s ease',
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Detalle del sector expandido */}
+      {expandedSector && (() => {
+        const sector = sectorData.find(s => s.nombre === expandedSector);
+        if (!sector) return null;
+        const maxUsr = Math.max(...sector.usuarios.map(u => u.cantidad), 1);
+
+        return (
+          <div className="aud-card" style={{
+            padding: '1.25rem', borderLeft: `4px solid ${sector.color}`,
+            animation: 'slideDown 0.25s ease',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #e2e8f0',
+            }}>
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>
+                  {SECTOR_ICONS[sector.nombre]} {sector.nombre}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
+                  {sector.usuarios.length} colaboradores · {sector.dias_activos} días activos · {sector.pacientes_unicos} pacientes únicos
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: sector.color }}>
+                  {formatNumber(sector.total)}
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>consultas</div>
+              </div>
+            </div>
+
+            {/* Grid: Colaboradores + Especialidades + OS */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem' }}>
+              {/* Colaboradores del sector */}
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                  👤 Colaboradores
+                </div>
+                {sector.usuarios.map((usr, idx) => {
+                  const pct = Math.round((usr.cantidad / sector.total) * 100);
+                  const topEsp = Object.entries(usr.por_especialidad).sort((a, b) => b[1] - a[1]).slice(0, 2);
+                  return (
+                    <div key={usr.nombre} style={{
+                      padding: '0.5rem 0', borderBottom: idx < sector.usuarios.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>{usr.nombre}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: sector.color }}>{usr.cantidad}</span>
+                          <span style={{
+                            fontSize: '0.62rem', fontWeight: 600, color: '#94a3b8',
+                            padding: '1px 5px', borderRadius: '6px', background: '#f8fafc',
+                          }}>{pct}%</span>
+                        </div>
+                      </div>
+                      <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '2px', overflow: 'hidden', marginBottom: '0.2rem' }}>
+                        <div style={{
+                          height: '100%', borderRadius: '2px',
+                          background: sector.color,
+                          width: `${(usr.cantidad / maxUsr) * 100}%`,
+                          transition: 'width 0.5s ease',
+                        }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.6rem', color: '#94a3b8' }}>
+                          {usr.dias_activos}d · ~{usr.promedio_diario}/día
+                        </span>
+                        {topEsp.map(([esp, cnt]) => (
+                          <span key={esp} style={{
+                            fontSize: '0.58rem', padding: '0px 4px', borderRadius: '4px',
+                            background: '#f1f5f9', color: '#64748b',
+                          }}>🩺 {esp}: {cnt}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Especialidades del sector */}
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                  🩺 Especialidades
+                </div>
+                {sector.top_especialidades.map(([esp, cnt], idx) => (
+                  <div key={esp} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '0.3rem 0', borderBottom: '1px solid #f8fafc',
+                  }}>
+                    <span style={{ fontSize: '0.78rem', color: '#475569' }}>{esp}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{cnt}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Top OS del sector */}
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                  🏦 Obras Sociales
+                </div>
+                {sector.top_clientes.map(([cli, cnt], idx) => (
+                  <div key={cli} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '0.3rem 0', borderBottom: '1px solid #f8fafc',
+                  }}>
+                    <span style={{ fontSize: '0.75rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                      {cli}
+                    </span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{cnt}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Sectores OTROS/SIN SECTOR si tienen datos */}
+      {sectorData.filter(s => s.nombre === 'OTROS' || s.nombre === 'SIN SECTOR').filter(s => s.total > 0).map(sector => (
+        <div key={sector.nombre} className="aud-card" style={{ padding: '0.75rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>
+                {SECTOR_ICONS[sector.nombre]} {sector.nombre}
+              </span>
+              <span style={{ fontSize: '0.72rem', color: '#cbd5e1', marginLeft: '0.5rem' }}>
+                {sector.usuarios.length} usuario{sector.usuarios.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: '#94a3b8' }}>
+              {formatNumber(sector.total)} consultas
+            </span>
+          </div>
+          {/* Lista compacta */}
+          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+            {sector.usuarios.map(usr => (
+              <span key={usr.nombre} style={{
+                fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px',
+                background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0',
+              }}>{usr.nombre}: {usr.cantidad}</span>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

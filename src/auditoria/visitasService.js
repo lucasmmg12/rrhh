@@ -6,6 +6,177 @@ import { supabase } from '../supabaseClient';
 // Métricas expandidas: OS, Responsable, Heatmap, Productividad
 // ═══════════════════════════════════════════════════════════════
 
+// ── MAPEO DE SECTORES OPERATIVOS ──
+// Cada colaborador pertenece a un sector fijo
+export const SECTOR_MAP = {
+  // SECTOR 1
+  'JACQUES VIRGINIA': 'SECTOR 1',
+  'VIRGINIA JACQUES': 'SECTOR 1',
+  'APARICIO EMILCE': 'SECTOR 1',
+  'EMILCE APARICIO': 'SECTOR 1',
+  'MORALES MALEN': 'SECTOR 1',
+  'MALEN MORALES': 'SECTOR 1',
+  // SECTOR 2
+  'ATENCIO EVELYN': 'SECTOR 2',
+  'EVELYN ATENCIO': 'SECTOR 2',
+  'QUINTERO JULIETA': 'SECTOR 2',
+  'JULIETA QUINTERO': 'SECTOR 2',
+  'FIGUEROA ERICA': 'SECTOR 2',
+  'FIGUEROA ÉRICA': 'SECTOR 2',
+  'ERICA FIGUEROA': 'SECTOR 2',
+  'ÉRICA FIGUEROA': 'SECTOR 2',
+  // CITOLOGÍA
+  'VEDIA ROMINA': 'CITOLOGÍA',
+  'ROMINA VEDIA': 'CITOLOGÍA',
+  'DI VIRGILIO MICAELA': 'CITOLOGÍA',
+  'MICAELA DI VIRGILIO': 'CITOLOGÍA',
+  'MESINA CARLA': 'CITOLOGÍA',
+  'CARLA MESINA': 'CITOLOGÍA',
+  // DIAGNÓSTICO (ecografías, mamografías, densitometrías)
+  'PEREZ YANINA': 'DIAGNÓSTICO',
+  'PÉREZ YANINA': 'DIAGNÓSTICO',
+  'YANINA PEREZ': 'DIAGNÓSTICO',
+  'YANINA PÉREZ': 'DIAGNÓSTICO',
+  'DIAZ DANIELA': 'DIAGNÓSTICO',
+  'DÍAZ DANIELA': 'DIAGNÓSTICO',
+  'DANIELA DIAZ': 'DIAGNÓSTICO',
+  'DANIELA DÍAZ': 'DIAGNÓSTICO',
+  'GORDILLO MONICA': 'DIAGNÓSTICO',
+  'GORDILLO MÓNICA': 'DIAGNÓSTICO',
+  'MONICA GORDILLO': 'DIAGNÓSTICO',
+  'MÓNICA GORDILLO': 'DIAGNÓSTICO',
+  'ESPEJO CRISTINA': 'DIAGNÓSTICO',
+  'CRISTINA ESPEJO': 'DIAGNÓSTICO',
+  'RUARTE DAIANA': 'DIAGNÓSTICO',
+  'DAIANA RUARTE': 'DIAGNÓSTICO',
+};
+
+// Especialidades que pertenecen al sector DIAGNÓSTICO
+// (para agrupar ecografías, mamografías, densitometrías bajo un solo nombre)
+export const DIAGNOSTICO_ESPECIALIDADES = [
+  'ECOGRAFIA', 'ECOGRAFÍA', 'ECOGRAFIAS', 'ECOGRAFÍAS',
+  'MAMOGRAFIA', 'MAMOGRAFÍA', 'MAMOGRAFIAS', 'MAMOGRAFÍAS',
+  'MAMOGRAFÍA Y DENSITOGRAFÍA', 'MAMOGRAFIA Y DENSITOGRAFIA',
+  'DENSITOMETRIA', 'DENSITOMETRÍA', 'DENSITOMETRIAS', 'DENSITOMETRÍAS',
+  'DENSITOGRAFIA', 'DENSITOGRAFÍA',
+  'DXI',
+];
+
+/**
+ * Resuelve el sector de un colaborador por nombre
+ */
+export function resolverSector(nombreUsuario) {
+  if (!nombreUsuario) return 'SIN SECTOR';
+  const key = nombreUsuario.trim().toUpperCase();
+  return SECTOR_MAP[key] || 'OTROS';
+}
+
+/**
+ * Verifica si una especialidad pertenece a DIAGNÓSTICO
+ */
+export function esDiagnostico(especialidad) {
+  if (!especialidad) return false;
+  return DIAGNOSTICO_ESPECIALIDADES.includes(especialidad.trim().toUpperCase());
+}
+
+/**
+ * Calcula métricas agrupadas por sector operativo
+ */
+export function calcularMetricasPorSector(datos) {
+  const sectores = {};
+  const SECTOR_COLORS = {
+    'SECTOR 1': '#3b82f6',
+    'SECTOR 2': '#10b981',
+    'CITOLOGÍA': '#8b5cf6',
+    'DIAGNÓSTICO': '#f59e0b',
+    'OTROS': '#94a3b8',
+    'SIN SECTOR': '#cbd5e1',
+  };
+
+  for (const row of datos) {
+    const usuario = row.usuario_creacion || 'Sin usuario';
+    const sector = resolverSector(usuario);
+
+    if (!sectores[sector]) {
+      sectores[sector] = {
+        nombre: sector,
+        color: SECTOR_COLORS[sector] || '#64748b',
+        total: 0,
+        pacientes: new Set(),
+        por_usuario: {},
+        por_especialidad: {},
+        por_dia: {},
+        por_cliente: {},
+        dias_activos: new Set(),
+      };
+    }
+
+    const s = sectores[sector];
+    s.total += 1;
+    if (row.id_paciente) s.pacientes.add(row.id_paciente);
+    if (row.fecha) s.dias_activos.add(row.fecha);
+
+    // Por usuario dentro del sector
+    if (!s.por_usuario[usuario]) {
+      s.por_usuario[usuario] = { cantidad: 0, por_dia: {}, por_especialidad: {} };
+    }
+    s.por_usuario[usuario].cantidad += 1;
+    if (row.fecha) {
+      s.por_usuario[usuario].por_dia[row.fecha] = (s.por_usuario[usuario].por_dia[row.fecha] || 0) + 1;
+      s.por_dia[row.fecha] = (s.por_dia[row.fecha] || 0) + 1;
+    }
+
+    // Especialidad (normalizar diagnóstico)
+    let esp = row.especialidad || 'Sin especialidad';
+    if (esDiagnostico(esp)) esp = 'DIAGNÓSTICO POR IMAGEN';
+    if (!s.por_especialidad[esp]) s.por_especialidad[esp] = 0;
+    s.por_especialidad[esp] += 1;
+    if (row.especialidad) {
+      s.por_usuario[usuario].por_especialidad[esp] = (s.por_usuario[usuario].por_especialidad[esp] || 0) + 1;
+    }
+
+    // Cliente/OS
+    const cli = row.cliente || 'Sin OS';
+    if (!s.por_cliente[cli]) s.por_cliente[cli] = 0;
+    s.por_cliente[cli] += 1;
+  }
+
+  // Convertir Sets y calcular promedios
+  const result = Object.values(sectores).map(s => ({
+    ...s,
+    pacientes_unicos: s.pacientes.size,
+    pacientes: undefined,
+    dias_activos: s.dias_activos.size,
+    promedio_diario: s.dias_activos.size > 0 ? Math.round(s.total / s.dias_activos.size) : 0,
+    usuarios: Object.entries(s.por_usuario)
+      .map(([nombre, data]) => ({
+        nombre,
+        cantidad: data.cantidad,
+        dias_activos: Object.keys(data.por_dia).length,
+        promedio_diario: Object.keys(data.por_dia).length > 0
+          ? Math.round(data.cantidad / Object.keys(data.por_dia).length)
+          : 0,
+        por_especialidad: data.por_especialidad,
+      }))
+      .sort((a, b) => b.cantidad - a.cantidad),
+    top_especialidades: Object.entries(s.por_especialidad)
+      .sort((a, b) => b[1] - a[1]),
+    top_clientes: Object.entries(s.por_cliente)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5),
+  }));
+
+  // Ordenar: Sectores fijos primero, OTROS al final
+  const ORDER = ['SECTOR 1', 'SECTOR 2', 'CITOLOGÍA', 'DIAGNÓSTICO', 'OTROS', 'SIN SECTOR'];
+  result.sort((a, b) => {
+    const ia = ORDER.indexOf(a.nombre);
+    const ib = ORDER.indexOf(b.nombre);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  return result;
+}
+
 /**
  * Obtiene visitas para un rango de fechas
  */
