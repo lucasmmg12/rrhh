@@ -1014,33 +1014,6 @@ function VistaPorSector({ sectorData, totalVisitas }) {
         );
       })()}
 
-      {/* Sectores OTROS/SIN SECTOR si tienen datos */}
-      {sectorData.filter(s => s.nombre === 'OTROS' || s.nombre === 'SIN SECTOR').filter(s => s.total > 0).map(sector => (
-        <div key={sector.nombre} className="aud-card" style={{ padding: '0.75rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>
-                {SECTOR_ICONS[sector.nombre]} {sector.nombre}
-              </span>
-              <span style={{ fontSize: '0.72rem', color: '#cbd5e1', marginLeft: '0.5rem' }}>
-                {sector.usuarios.length} usuario{sector.usuarios.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <span style={{ fontSize: '1rem', fontWeight: 700, color: '#94a3b8' }}>
-              {formatNumber(sector.total)} consultas
-            </span>
-          </div>
-          {/* Lista compacta */}
-          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-            {sector.usuarios.map(usr => (
-              <span key={usr.nombre} style={{
-                fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px',
-                background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0',
-              }}>{usr.nombre}: {usr.cantidad}</span>
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
