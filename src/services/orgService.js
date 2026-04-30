@@ -9,7 +9,16 @@ export const orgService = {
             .select('*');
 
         if (error) throw error;
-        return nodes;
+
+        // Normalizar tasks: asegurar que siempre sea un array
+        return (nodes || []).map(node => ({
+            ...node,
+            tasks: Array.isArray(node.tasks)
+                ? node.tasks
+                : (typeof node.tasks === 'string' && node.tasks.trim()
+                    ? [node.tasks]
+                    : [])
+        }));
     },
 
     // Insert a new node (for Unassigned or directly adding)

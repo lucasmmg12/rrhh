@@ -39,7 +39,7 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
             setEditForm({
                 ...node,
                 name: node.name || '',
-                tasks: node.tasks ? node.tasks.join('\n') : ''
+                tasks: Array.isArray(node.tasks) ? node.tasks.join('\n') : (node.tasks || '')
             });
             setIsEditing(false);
             setShowAllTeam(false);
@@ -157,7 +157,8 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
     };
 
     const handleSave = () => {
-        const tasksArray = editForm.tasks.split('\n').filter(t => t.trim() !== '');
+        const tasksStr = editForm.tasks || '';
+        const tasksArray = tasksStr.split('\n').filter(t => t.trim() !== '');
         const updatedNode = {
             ...editForm,
             tasks: tasksArray
@@ -427,9 +428,11 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
                             {node.tasks && node.tasks.length > 0 && (
                                 <Section title="Responsabilidades y Tareas">
                                     <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#475569' }}>
-                                        {node.tasks.map((task, index) => (
+                                        {Array.isArray(node.tasks) ? node.tasks.map((task, index) => (
                                             <li key={index} style={{ marginBottom: '0.5rem' }}>{task}</li>
-                                        ))}
+                                        )) : (
+                                            <li style={{ marginBottom: '0.5rem' }}>{node.tasks}</li>
+                                        )}
                                     </ul>
                                 </Section>
                             )}
