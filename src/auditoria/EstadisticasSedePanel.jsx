@@ -710,7 +710,10 @@ function VistaDiaria({ fechaDiaria, setFechaDiaria, resumen, datosRaw }) {
   const porSector = useMemo(() => {
     const sectorMap = {};
     for (const row of datosRaw) {
-      const sector = row.servicio || 'Sin sector';
+      const servicioRaw = (row.servicio || 'Sin sector').toUpperCase();
+      const sector = (servicioRaw.includes('ECOGRAFIA') || servicioRaw.includes('MAMOGRAFIA') || servicioRaw.includes('DENSITOMETRIA'))
+        ? 'DIAGNÓSTICO'
+        : (row.servicio || 'Sin sector');
       if (!sectorMap[sector]) {
         sectorMap[sector] = {
           nombre: sector,
