@@ -345,7 +345,7 @@ export default function EstadisticasSedePanel() {
           datosRaw={datos}
         />
       )}
-      {vista === 'visitas' && <VisitasSedePanel />}
+      {vista === 'visitas' && <VisitasSedePanel externalDesde={desde} externalHasta={hasta} />}
     </div>
   );
 }

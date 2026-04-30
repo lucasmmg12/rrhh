@@ -15,7 +15,8 @@ const DOW_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 const formatNumber = (n) => new Intl.NumberFormat('es-AR').format(n);
 
-export default function VisitasSedePanel() {
+export default function VisitasSedePanel({ externalDesde, externalHasta }) {
+  const isExternal = !!(externalDesde && externalHasta);
   const [datos, setDatos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [periodoTipo, setPeriodoTipo] = useState('mes');
@@ -34,8 +35,9 @@ export default function VisitasSedePanel() {
     checkSyncHealth().then(r => setSyncOnline(r.success));
   }, []);
 
-  // ── Calcular rango de fechas según período ──
-  const { fechaDesde, fechaHasta, periodoLabel } = useMemo(() => {
+  // ── Calcular rango de fechas según período (solo si NO externo) ──
+  const { fechaDesde: internalDesde, fechaHasta: internalHasta, periodoLabel } = useMemo(() => {
+    if (isExternal) return { fechaDesde: externalDesde, fechaHasta: externalHasta, periodoLabel: '' };
     const ref = new Date(fechaRef + 'T12:00:00');
     if (periodoTipo === 'dia') {
       return {
@@ -69,7 +71,11 @@ export default function VisitasSedePanel() {
       fechaHasta: end.toISOString().split('T')[0],
       periodoLabel: ref.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }),
     };
-  }, [periodoTipo, fechaRef, rangoDesde, rangoHasta]);
+  }, [isExternal, externalDesde, externalHasta, periodoTipo, fechaRef, rangoDesde, rangoHasta]);
+
+  // Fechas efectivas
+  const fechaDesde = isExternal ? externalDesde : internalDesde;
+  const fechaHasta = isExternal ? externalHasta : internalHasta;
 
   // ── Cargar datos ──
   const cargarDatos = useCallback(() => {
@@ -144,84 +150,86 @@ export default function VisitasSedePanel() {
 
   return (
     <div>
-      {/* ── Barra de período + Sync ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        marginBottom: '1rem', flexWrap: 'wrap',
-        padding: '0.65rem 0.85rem', borderRadius: '12px',
-        background: '#f8fafc', border: '1px solid #e2e8f0',
-      }}>
-        {['dia', 'semana', 'mes', 'rango'].map(t => (
-          <button key={t} onClick={() => setPeriodoTipo(t)} style={{
-            padding: '0.35rem 0.75rem', borderRadius: '8px', border: 'none',
-            background: periodoTipo === t ? '#1e40af' : 'white',
-            color: periodoTipo === t ? 'white' : '#64748b',
-            fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-            boxShadow: periodoTipo === t ? '0 2px 8px rgba(30,64,175,0.3)' : '0 1px 2px rgba(0,0,0,0.05)',
-            transition: 'all 0.2s',
-          }}>
-            {t === 'dia' ? '📅 Día' : t === 'semana' ? '📆 Semana' : t === 'mes' ? '🗓️ Mes' : '📐 Rango'}
-          </button>
-        ))}
-        {periodoTipo !== 'rango' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.5rem' }}>
-            <button onClick={() => navegar(-1)} style={{
-              width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #e2e8f0',
-              background: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-            }}>◀</button>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', padding: '0 0.5rem', textTransform: 'capitalize' }}>
-              {periodoLabel}
-            </span>
-            <button onClick={() => navegar(1)} style={{
-              width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #e2e8f0',
-              background: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-            }}>▶</button>
-            <button onClick={() => setFechaRef(new Date().toISOString().split('T')[0])} style={{
-              padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0',
-              background: 'white', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
-              color: '#3b82f6', marginLeft: '0.3rem',
-            }}>Hoy</button>
-          </div>
-        )}
-        {periodoTipo === 'rango' && (
-          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', marginLeft: '0.5rem' }}>
-            <input type="date" className="aud-input" value={rangoDesde}
-              onChange={e => setRangoDesde(e.target.value)}
-              style={{ width: '150px', marginBottom: 0, fontSize: '0.78rem' }}
-            />
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>a</span>
-            <input type="date" className="aud-input" value={rangoHasta}
-              onChange={e => setRangoHasta(e.target.value)}
-              style={{ width: '150px', marginBottom: 0, fontSize: '0.78rem' }}
-            />
-          </div>
-        )}
-
-        {/* Sync button */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span style={{
-            width: '8px', height: '8px', borderRadius: '50%',
-            background: syncOnline === true ? '#10b981' : syncOnline === false ? '#ef4444' : '#94a3b8',
-            display: 'inline-block',
-          }} />
-          <button
-            onClick={handleSync}
-            disabled={syncing || !syncOnline}
-            style={{
-              padding: '0.3rem 0.65rem', borderRadius: '8px',
-              border: '1px solid #e2e8f0',
-              background: syncing ? '#f1f5f9' : 'white',
-              fontSize: '0.72rem', fontWeight: 600, cursor: syncing ? 'wait' : 'pointer',
-              color: syncOnline ? '#3b82f6' : '#94a3b8',
+      {/* ── Barra de período + Sync (solo cuando tiene su propio control) ── */}
+      {!isExternal && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          marginBottom: '1rem', flexWrap: 'wrap',
+          padding: '0.65rem 0.85rem', borderRadius: '12px',
+          background: '#f8fafc', border: '1px solid #e2e8f0',
+        }}>
+          {['dia', 'semana', 'mes', 'rango'].map(t => (
+            <button key={t} onClick={() => setPeriodoTipo(t)} style={{
+              padding: '0.35rem 0.75rem', borderRadius: '8px', border: 'none',
+              background: periodoTipo === t ? '#1e40af' : 'white',
+              color: periodoTipo === t ? 'white' : '#64748b',
+              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+              boxShadow: periodoTipo === t ? '0 2px 8px rgba(30,64,175,0.3)' : '0 1px 2px rgba(0,0,0,0.05)',
               transition: 'all 0.2s',
-            }}
-          >
-            {syncing ? '⏳ Sincronizando...' : '🔄 Sync SALUS'}
-          </button>
+            }}>
+              {t === 'dia' ? '📅 Día' : t === 'semana' ? '📆 Semana' : t === 'mes' ? '🗓️ Mes' : '📐 Rango'}
+            </button>
+          ))}
+          {periodoTipo !== 'rango' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginLeft: '0.5rem' }}>
+              <button onClick={() => navegar(-1)} style={{
+                width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #e2e8f0',
+                background: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+              }}>◀</button>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', padding: '0 0.5rem', textTransform: 'capitalize' }}>
+                {periodoLabel}
+              </span>
+              <button onClick={() => navegar(1)} style={{
+                width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #e2e8f0',
+                background: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+              }}>▶</button>
+              <button onClick={() => setFechaRef(new Date().toISOString().split('T')[0])} style={{
+                padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0',
+                background: 'white', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                color: '#3b82f6', marginLeft: '0.3rem',
+              }}>Hoy</button>
+            </div>
+          )}
+          {periodoTipo === 'rango' && (
+            <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', marginLeft: '0.5rem' }}>
+              <input type="date" className="aud-input" value={rangoDesde}
+                onChange={e => setRangoDesde(e.target.value)}
+                style={{ width: '150px', marginBottom: 0, fontSize: '0.78rem' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>a</span>
+              <input type="date" className="aud-input" value={rangoHasta}
+                onChange={e => setRangoHasta(e.target.value)}
+                style={{ width: '150px', marginBottom: 0, fontSize: '0.78rem' }}
+              />
+            </div>
+          )}
+
+          {/* Sync button */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{
+              width: '8px', height: '8px', borderRadius: '50%',
+              background: syncOnline === true ? '#10b981' : syncOnline === false ? '#ef4444' : '#94a3b8',
+              display: 'inline-block',
+            }} />
+            <button
+              onClick={handleSync}
+              disabled={syncing || !syncOnline}
+              style={{
+                padding: '0.3rem 0.65rem', borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                background: syncing ? '#f1f5f9' : 'white',
+                fontSize: '0.72rem', fontWeight: 600, cursor: syncing ? 'wait' : 'pointer',
+                color: syncOnline ? '#3b82f6' : '#94a3b8',
+                transition: 'all 0.2s',
+              }}
+            >
+              {syncing ? '⏳ Sincronizando...' : '🔄 Sync SALUS'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Sync result toast */}
       {syncResult && (

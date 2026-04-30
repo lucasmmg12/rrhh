@@ -7,49 +7,28 @@ import { supabase } from '../supabaseClient';
 // ═══════════════════════════════════════════════════════════════
 
 // ── MAPEO DE SECTORES OPERATIVOS ──
-// Cada colaborador pertenece a un sector fijo
-export const SECTOR_MAP = {
+// Cada entrada: [fragmento_apellido, fragmento_nombre] → sector
+// Se matchea contra el nombre completo de SALUS (formato: "APELLIDO1 APELLIDO2, NOMBRE1 NOMBRE2")
+const SECTOR_RULES = [
   // SECTOR 1
-  'JACQUES VIRGINIA': 'SECTOR 1',
-  'VIRGINIA JACQUES': 'SECTOR 1',
-  'APARICIO EMILCE': 'SECTOR 1',
-  'EMILCE APARICIO': 'SECTOR 1',
-  'MORALES MALEN': 'SECTOR 1',
-  'MALEN MORALES': 'SECTOR 1',
+  { keys: ['JACQUES', 'VIRGINIA'], sector: 'SECTOR 1' },
+  { keys: ['APARICIO', 'EMILCE'], sector: 'SECTOR 1' },
+  { keys: ['MORALES', 'MALEN'], sector: 'SECTOR 1' },
   // SECTOR 2
-  'ATENCIO EVELYN': 'SECTOR 2',
-  'EVELYN ATENCIO': 'SECTOR 2',
-  'QUINTERO JULIETA': 'SECTOR 2',
-  'JULIETA QUINTERO': 'SECTOR 2',
-  'FIGUEROA ERICA': 'SECTOR 2',
-  'FIGUEROA ÉRICA': 'SECTOR 2',
-  'ERICA FIGUEROA': 'SECTOR 2',
-  'ÉRICA FIGUEROA': 'SECTOR 2',
+  { keys: ['ATENCIO', 'EVELYN'], sector: 'SECTOR 2' },
+  { keys: ['QUINTERO', 'JULIETA'], sector: 'SECTOR 2' },
+  { keys: ['FIGUEROA', 'ERICA'], sector: 'SECTOR 2' },
   // CITOLOGÍA
-  'VEDIA ROMINA': 'CITOLOGÍA',
-  'ROMINA VEDIA': 'CITOLOGÍA',
-  'DI VIRGILIO MICAELA': 'CITOLOGÍA',
-  'MICAELA DI VIRGILIO': 'CITOLOGÍA',
-  'MESINA CARLA': 'CITOLOGÍA',
-  'CARLA MESINA': 'CITOLOGÍA',
+  { keys: ['VEDIA', 'ROMINA'], sector: 'CITOLOGÍA' },
+  { keys: ['DI VIRGILIO', 'MICAELA'], sector: 'CITOLOGÍA' },
+  { keys: ['MESSIN', 'CARLA'], sector: 'CITOLOGÍA' },  // MESSINA VILA → "MESSIN" matchea
   // DIAGNÓSTICO (ecografías, mamografías, densitometrías)
-  'PEREZ YANINA': 'DIAGNÓSTICO',
-  'PÉREZ YANINA': 'DIAGNÓSTICO',
-  'YANINA PEREZ': 'DIAGNÓSTICO',
-  'YANINA PÉREZ': 'DIAGNÓSTICO',
-  'DIAZ DANIELA': 'DIAGNÓSTICO',
-  'DÍAZ DANIELA': 'DIAGNÓSTICO',
-  'DANIELA DIAZ': 'DIAGNÓSTICO',
-  'DANIELA DÍAZ': 'DIAGNÓSTICO',
-  'GORDILLO MONICA': 'DIAGNÓSTICO',
-  'GORDILLO MÓNICA': 'DIAGNÓSTICO',
-  'MONICA GORDILLO': 'DIAGNÓSTICO',
-  'MÓNICA GORDILLO': 'DIAGNÓSTICO',
-  'ESPEJO CRISTINA': 'DIAGNÓSTICO',
-  'CRISTINA ESPEJO': 'DIAGNÓSTICO',
-  'RUARTE DAIANA': 'DIAGNÓSTICO',
-  'DAIANA RUARTE': 'DIAGNÓSTICO',
-};
+  { keys: ['PEREZ', 'YANINA'], sector: 'DIAGNÓSTICO' },
+  { keys: ['DIAZ', 'DANIELA'], sector: 'DIAGNÓSTICO' },
+  { keys: ['GORDILLO', 'MONICA'], sector: 'DIAGNÓSTICO' },
+  { keys: ['ESPEJO', 'CRISTINA'], sector: 'DIAGNÓSTICO' },
+  { keys: ['RUARTE', 'DAIANA'], sector: 'DIAGNÓSTICO' },
+];
 
 // Especialidades que pertenecen al sector DIAGNÓSTICO
 // (para agrupar ecografías, mamografías, densitometrías bajo un solo nombre)
@@ -63,12 +42,24 @@ export const DIAGNOSTICO_ESPECIALIDADES = [
 ];
 
 /**
- * Resuelve el sector de un colaborador por nombre
+ * Normaliza texto: quita acentos y pasa a mayúscula
+ */
+function normalizar(str) {
+  return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+}
+
+/**
+ * Resuelve el sector de un colaborador por nombre.
+ * Usa match parcial: todos los keywords deben aparecer en el nombre completo.
  */
 export function resolverSector(nombreUsuario) {
   if (!nombreUsuario) return 'SIN SECTOR';
-  const key = nombreUsuario.trim().toUpperCase();
-  return SECTOR_MAP[key] || 'OTROS';
+  const norm = normalizar(nombreUsuario);
+  for (const rule of SECTOR_RULES) {
+    const allMatch = rule.keys.every(k => norm.includes(normalizar(k)));
+    if (allMatch) return rule.sector;
+  }
+  return 'OTROS';
 }
 
 /**
