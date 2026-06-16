@@ -67,15 +67,15 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   const [successMsg, setSuccessMsg] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Cross-filter: selected specialty (null = show all)
+  const [selectedEspecialidad, setSelectedEspecialidad] = useState(null);
+
   // ─── Load Data ──────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [records, count] = await Promise.all([
-        fetchVisitasSF(),
-        getRecordCount(),
-      ]);
+      const [records, count] = await Promise.all([fetchVisitasSF(), getRecordCount()]);
       setData(records);
       setRecordCount(count);
     } catch (err) {
@@ -92,26 +92,14 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
-      setUploading(true);
-      setUploadProgress(0);
-      setError(null);
-      setSuccessMsg(null);
-
-      // Parse Excel
+      setUploading(true); setUploadProgress(0); setError(null); setSuccessMsg(null);
       setUploadProgress(5);
       const records = await parseRevisionXlsx(file);
       setUploadProgress(20);
-
-      // Upload to Supabase
-      const uploaded = await uploadRecords(records, (pct) => {
-        setUploadProgress(20 + Math.round(pct * 0.75));
-      });
+      const uploaded = await uploadRecords(records, (pct) => setUploadProgress(20 + Math.round(pct * 0.75)));
       setUploadProgress(100);
       setSuccessMsg(`✅ ${uploaded.toLocaleString()} registros procesados correctamente`);
-
-      // Reload data
       await loadData();
     } catch (err) {
       console.error('Upload error:', err);
@@ -122,7 +110,13 @@ export default function MetricasSantaFeApp({ embedded = false }) {
     }
   }, [loadData]);
 
-  // ─── Computed Data ──────────────────────────────────────
+  // ─── Filtered data for Resumen cross-filter ─────────────
+  const filteredData = useMemo(() => {
+    if (!selectedEspecialidad) return data;
+    return data.filter(d => d.especialidad === selectedEspecialidad);
+  }, [data, selectedEspecialidad]);
+
+  // ─── Computed: full data (for other tabs) ───────────────
   const heatmapDias = useMemo(() => getHeatmapDias(data), [data]);
   const heatmapHoras = useMemo(() => getHeatmapHoras(data), [data]);
   const obrasSociales = useMemo(() => getObrasSociales(data), [data]);
@@ -135,18 +129,22 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   const pacientesRec = useMemo(() => getPacientesRecurrentes(data), [data]);
   const rankGrupoAgenda = useMemo(() => getRankingGrupoAgenda(data), [data]);
 
-  // Unique counts for KPIs
+  // ─── Computed: filtered data (for Resumen cross-filter)
+  const resHeatmapDias = useMemo(() => getHeatmapDias(filteredData), [filteredData]);
+  const resObrasSociales = useMemo(() => getObrasSociales(filteredData), [filteredData]);
+  const resVisitasMes = useMemo(() => getVisitasPorMes(filteredData), [filteredData]);
+  const resRankMedicos = useMemo(() => getRankingMedicos(filteredData), [filteredData]);
+
+  // KPIs (filtered when specialty selected)
   const kpis = useMemo(() => {
-    const uniqueEsp = new Set(data.map(d => d.especialidad).filter(Boolean));
-    const uniqueMed = new Set(data.map(d => d.responsable).filter(Boolean));
-    const uniqueOS = new Set(data.map(d => d.cliente).filter(Boolean));
+    const src = filteredData;
     return {
-      totalVisitas: data.length,
-      especialidades: uniqueEsp.size,
-      medicos: uniqueMed.size,
-      obrasSociales: uniqueOS.size,
+      totalVisitas: src.length,
+      especialidades: new Set(src.map(d => d.especialidad).filter(Boolean)).size,
+      medicos: new Set(src.map(d => d.responsable).filter(Boolean)).size,
+      obrasSociales: new Set(src.map(d => d.cliente).filter(c => c && /^\d/.test(c.trim()))).size,
     };
-  }, [data]);
+  }, [filteredData]);
 
   // Auto-hide success message
   useEffect(() => {
@@ -285,10 +283,13 @@ export default function MetricasSantaFeApp({ embedded = false }) {
 
           {activeTab === 'resumen' && (
             <ResumenView
-              heatmapDias={heatmapDias}
-              obrasSociales={obrasSociales}
+              heatmapDias={resHeatmapDias}
+              obrasSociales={resObrasSociales}
               rankEspecialidades={rankEspecialidades}
-              visitasMes={visitasMes}
+              rankMedicos={resRankMedicos}
+              visitasMes={resVisitasMes}
+              selectedEspecialidad={selectedEspecialidad}
+              onSelectEspecialidad={(esp) => setSelectedEspecialidad(prev => prev === esp ? null : esp)}
             />
           )}
           {activeTab === 'heatmaps' && (
@@ -320,9 +321,22 @@ export default function MetricasSantaFeApp({ embedded = false }) {
 // ═══════════════════════════════════════════════════════════
 //  RESUMEN VIEW (Overview)
 // ═══════════════════════════════════════════════════════════
-function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMes }) {
+function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, rankMedicos, visitasMes, selectedEspecialidad, onSelectEspecialidad }) {
   return (
     <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
+      {/* Active filter indicator */}
+      {selectedEspecialidad && (
+        <div className="mt-filter-badge">
+          <span>🏥 Filtrando por: <strong>{selectedEspecialidad}</strong></span>
+          <span style={{ fontSize: '0.72rem', color: 'rgba(30,95,166,0.6)', marginLeft: '8px' }}>
+            Todos los gráficos de esta pestaña muestran datos de esta especialidad
+          </span>
+          <button className="mt-filter-badge__clear" onClick={() => onSelectEspecialidad(null)}>
+            ✕ Quitar filtro
+          </button>
+        </div>
+      )}
+
       <div className="mt-chart-grid">
         {/* Heatmap Días mini */}
         <div className="mt-chart-card">
@@ -357,27 +371,49 @@ function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMe
           <PieObrasSociales data={obrasSociales} />
         </div>
 
-        {/* Ranking Especialidades */}
+        {/* Ranking Especialidades — CLICKABLE */}
         <div className="mt-chart-card">
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">🏆 Especialidades más concurridas</span>
-            <span className="mt-chart-card__subtitle">Top 15</span>
+            <span className="mt-chart-card__subtitle">Hacé click para filtrar</span>
           </div>
           <ChartHelp
-            text="Lista ordenada de las 15 especialidades médicas con mayor cantidad de visitas registradas. La barra horizontal muestra la proporción relativa respecto a la especialidad líder."
+            text="Lista ordenada de las 15 especialidades médicas con mayor cantidad de visitas registradas. Hacé click en cualquier especialidad para filtrar todos los gráficos de esta pestaña y ver los datos específicos de esa especialidad."
             tips={[
+              'Click en una especialidad = filtra todos los gráficos de Resumen por esa especialidad',
+              'Click de nuevo en la misma = quita el filtro y vuelve a "Todas"',
               '🥇🥈🥉 indican las tres especialidades con más demanda',
-              'Especialidades con alta demanda pueden requerir mayor asignación de profesionales o turnos',
-              'Comparar con la cantidad de médicos disponibles para detectar sobrecarga o capacidad ociosa',
+              'La barra horizontal muestra la proporción relativa respecto a la especialidad líder',
             ]}
           />
-          <RankingList data={rankEspecialidades} color="#1E5FA6" />
+          <ClickableRankingList
+            data={rankEspecialidades}
+            color="#1E5FA6"
+            selectedValue={selectedEspecialidad}
+            onSelect={onSelectEspecialidad}
+          />
+        </div>
+
+        {/* Ranking Médicos (filtered) */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">👨‍⚕️ Médicos{selectedEspecialidad ? ` — ${selectedEspecialidad}` : ''}</span>
+            <span className="mt-chart-card__subtitle">Top 15{selectedEspecialidad ? ' (filtrado)' : ''}</span>
+          </div>
+          <ChartHelp
+            text="Ranking de médicos por volumen de atención. Cuando una especialidad está seleccionada, muestra solo los médicos de esa especialidad."
+            tips={[
+              'Se actualiza automáticamente al seleccionar una especialidad',
+              'Útil para ver qué médicos atienden cada especialidad',
+            ]}
+          />
+          <RankingList data={rankMedicos} color="#7C3AED" />
         </div>
 
         {/* Line Visitas por Mes */}
-        <div className="mt-chart-card">
+        <div className="mt-chart-card mt-chart-card--full">
           <div className="mt-chart-card__header">
-            <span className="mt-chart-card__title">📈 Visitas por mes</span>
+            <span className="mt-chart-card__title">📈 Visitas por mes{selectedEspecialidad ? ` — ${selectedEspecialidad}` : ''}</span>
           </div>
           <ChartHelp
             text="Gráfico de línea que muestra la evolución temporal de la cantidad total de visitas mes a mes. Permite identificar estacionalidad, tendencias de crecimiento o caída en la demanda."
@@ -808,6 +844,46 @@ function getPosClass(index) {
   if (index === 1) return 'mt-ranking__pos--silver';
   if (index === 2) return 'mt-ranking__pos--bronze';
   return 'mt-ranking__pos--default';
+}
+
+// ─── Clickable Ranking List (for cross-filter) ────────────
+function ClickableRankingList({ data, color, selectedValue, onSelect }) {
+  if (!data || data.length === 0) return <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center' }}>Sin datos</p>;
+  const maxVal = Math.max(...data.map(d => d.value), 1);
+
+  return (
+    <div className="mt-ranking">
+      {data.map((item, i) => {
+        const isSelected = selectedValue === item.fullName;
+        return (
+          <div
+            key={i}
+            className={`mt-ranking__item mt-ranking__item--clickable ${isSelected ? 'mt-ranking__item--selected' : ''}`}
+            onClick={() => onSelect(item.fullName)}
+            title={`Click para ${isSelected ? 'quitar filtro' : `filtrar por ${item.fullName}`}`}
+          >
+            <div className={`mt-ranking__pos ${getPosClass(i)}`}>
+              {i === 0 ? '\ud83e\udd47' : i === 1 ? '\ud83e\udd48' : i === 2 ? '\ud83e\udd49' : i + 1}
+            </div>
+            <span className="mt-ranking__name">{item.name}</span>
+            <div className="mt-ranking__bar-wrapper">
+              <div className="mt-ranking__bar">
+                <div
+                  className="mt-ranking__bar-fill"
+                  style={{
+                    width: `${(item.value / maxVal) * 100}%`,
+                    backgroundColor: isSelected ? color : `${color}88`,
+                  }}
+                />
+              </div>
+            </div>
+            <span className="mt-ranking__value">{item.value.toLocaleString()}</span>
+            {isSelected && <span style={{ fontSize: '0.7rem', color }}>✓</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════

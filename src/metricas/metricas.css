@@ -462,6 +462,57 @@
   background: var(--primary-50);
 }
 
+.mt-ranking__item--clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.mt-ranking__item--clickable:hover {
+  background: #dbeafe;
+  transform: translateX(4px);
+}
+
+.mt-ranking__item--selected {
+  background: #dbeafe !important;
+  border: 2px solid #1E5FA6;
+  box-shadow: 0 0 0 3px rgba(30, 95, 166, 0.15);
+}
+
+/* ─── Filter Badge ─── */
+.mt-filter-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  font-size: 0.82rem;
+  color: #1e3a8a;
+  animation: mtFadeIn 0.2s ease-out;
+  flex-wrap: wrap;
+}
+
+.mt-filter-badge__clear {
+  margin-left: auto;
+  padding: 0.3rem 0.75rem;
+  background: #ffffff;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  color: #1E5FA6;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.mt-filter-badge__clear:hover {
+  background: #1E5FA6;
+  color: #ffffff;
+}
+
 .mt-ranking__pos {
   width: 28px; height: 28px;
   border-radius: 8px;

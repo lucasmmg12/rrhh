@@ -91,7 +91,6 @@ export async function uploadRecords(records, onProgress) {
 
 // ─── FETCH ALL RECORDS ──────────────────────────────────────
 export async function fetchVisitasSF() {
-  // Supabase default limit is 1000, we need all records
   const allRecords = [];
   let from = 0;
   const PAGE = 1000;
@@ -126,7 +125,7 @@ export async function deleteAllRecords() {
   const { error } = await supabase
     .from(TABLE)
     .delete()
-    .neq('id_visita', 0); // deletes all rows
+    .neq('id_visita', 0);
   if (error) throw new Error(error.message);
 }
 
@@ -137,16 +136,25 @@ export async function deleteAllRecords() {
 const DIAS_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MESES_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+// Helper: recalculate day of week from fecha_visita using UTC to avoid
+// timezone offset (Argentina UTC-3 shifts getDay() one day back)
+function getDiaUTC(fechaStr) {
+  if (!fechaStr) return null;
+  const d = new Date(fechaStr + 'T12:00:00Z');
+  return d.getUTCDay();
+}
+
 // ─── HEATMAP: Visits by Day of Week ────────────────────────
 export function getHeatmapDias(data) {
   const counts = new Array(7).fill(0);
   data.forEach(d => {
-    if (d.dia_semana != null) counts[d.dia_semana]++;
+    const day = getDiaUTC(d.fecha_visita);
+    if (day != null) counts[day]++;
   });
 
-  // Reorder to start from Monday: [Lun, Mar, Mié, Jue, Vie, Sáb, Dom]
-  const ordered = [1, 2, 3, 4, 5, 6, 0];
-  const maxVal = Math.max(...counts, 1);
+  // Lun-Sáb only (no Domingo)
+  const ordered = [1, 2, 3, 4, 5, 6];
+  const maxVal = Math.max(...ordered.map(i => counts[i]), 1);
 
   return ordered.map(i => ({
     label: DIAS_LABELS[i],
@@ -174,19 +182,18 @@ export function getHeatmapHoras(data) {
 }
 
 // ─── PIE: Top Obras Sociales (Cliente) ─────────────────────
+// Solo se consideran obras sociales aquellas cuyo campo "cliente"
+// empieza con un número (ej: "001-Provincia").
 export function getObrasSociales(data, topN = 10) {
   const counts = {};
   data.forEach(d => {
-    if (d.cliente) {
-      // Clean up the client name: remove leading number prefix
+    if (d.cliente && /^\d/.test(d.cliente.trim())) {
       const name = d.cliente.replace(/^\d+\s*-\s*/, '').trim();
       counts[name] = (counts[name] || 0) + 1;
     }
   });
 
-  const sorted = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1]);
-
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const top = sorted.slice(0, topN);
   const othersCount = sorted.slice(topN).reduce((sum, [, v]) => sum + v, 0);
 
@@ -229,7 +236,7 @@ export function getVisitasPorMes(data) {
   const counts = {};
   data.forEach(d => {
     if (d.fecha_visita) {
-      const key = d.fecha_visita.slice(0, 7); // YYYY-MM
+      const key = d.fecha_visita.slice(0, 7);
       counts[key] = (counts[key] || 0) + 1;
     }
   });
@@ -270,19 +277,17 @@ function buildRanking(data, field, topN) {
 
 // ─── HEATMAP MATRIX: Day × Hour (cross-tabulated) ─────────
 export function getHeatmapMatrixDiaHora(data) {
-  // 7 days × 24 hours matrix
   const matrix = Array.from({ length: 7 }, () => new Array(24).fill(0));
   data.forEach(d => {
-    if (d.dia_semana != null && d.hora_numero != null && d.hora_numero >= 0 && d.hora_numero < 24) {
-      matrix[d.dia_semana][d.hora_numero]++;
+    const day = getDiaUTC(d.fecha_visita);
+    if (day != null && d.hora_numero != null && d.hora_numero >= 0 && d.hora_numero < 24) {
+      matrix[day][d.hora_numero]++;
     }
   });
 
-  // Find global max for intensity normalization
   let maxVal = 1;
   matrix.forEach(row => row.forEach(v => { if (v > maxVal) maxVal = v; }));
 
-  // Reorder: Lun→Dom
   const dayOrder = [1, 2, 3, 4, 5, 6, 0];
   return {
     days: dayOrder.map(i => DIAS_LABELS[i]),
@@ -318,13 +323,11 @@ export function getAusentismoStats(data) {
       pct: total > 0 ? ((count / total) * 100).toFixed(1) : '0',
     }));
 
-  // Ausentismo by specialty (no-show rate per specialty)
   const byEsp = {};
   data.forEach(d => {
     if (d.especialidad && d.asistencia) {
       if (!byEsp[d.especialidad]) byEsp[d.especialidad] = { total: 0, noShow: 0 };
       byEsp[d.especialidad].total++;
-      // Consider 'Ausente' or similar as no-show
       const lower = d.asistencia.toLowerCase();
       if (lower.includes('ausente') || lower.includes('no asist') || lower.includes('cancelad')) {
         byEsp[d.especialidad].noShow++;
@@ -333,7 +336,7 @@ export function getAusentismoStats(data) {
   });
 
   const ausentismoByEsp = Object.entries(byEsp)
-    .filter(([, v]) => v.total >= 20) // Only specialties with enough data
+    .filter(([, v]) => v.total >= 20)
     .map(([name, v]) => ({
       name: name.length > 30 ? name.substring(0, 27) + '...' : name,
       fullName: name,
@@ -349,22 +352,7 @@ export function getAusentismoStats(data) {
 
 // ─── PACIENTES RECURRENTES ─────────────────────────────────
 export function getPacientesRecurrentes(data, topN = 15) {
-  const counts = {};
-  data.forEach(d => {
-    if (d.paciente) {
-      counts[d.paciente] = (counts[d.paciente] || 0) + 1;
-    }
-  });
-
-  return Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, topN)
-    .map(([name, value], i) => ({
-      name: name.length > 35 ? name.substring(0, 32) + '...' : name,
-      fullName: name,
-      value,
-      rank: i + 1,
-    }));
+  return buildRanking(data, 'paciente', topN);
 }
 
 // ─── GRUPO AGENDA ──────────────────────────────────────────
