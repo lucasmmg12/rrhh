@@ -8,6 +8,7 @@ const FichadasApp = lazy(() => import('./fichadas/FichadasApp.jsx'));
 const AuditoriaApp = lazy(() => import('./auditoria/AuditoriaApp.jsx'));
 const EfemeridesApp = lazy(() => import('./efemerides/EfemeridesApp.jsx'));
 const ControlHorarioApp = lazy(() => import('./controlhorario/ControlHorarioApp.jsx'));
+const MetricasSantaFeApp = lazy(() => import('./metricas/MetricasSantaFeApp.jsx'));
 
 // Loading spinner
 function LoadingSpinner({ label = 'Cargando módulo...' }) {
@@ -81,6 +82,14 @@ function HomePanel() {
       icon: '⏱️',
       color: '#0891B2',
       bg: '#CFFAFE',
+    },
+    {
+      id: 'metricas-sf',
+      title: 'Métricas — Santa Fe',
+      description: 'Dashboard analítico de visitas médicas',
+      icon: '📊',
+      color: '#7C3AED',
+      bg: '#EDE9FE',
     },
   ];
 
@@ -207,6 +216,7 @@ export default function RRHHApp() {
     calendario: 'Agenda de Salas',
     fichadas: 'Control de Fichadas',
     controlhorario: 'Control Horario — Sede Santa Fe',
+    'metricas-sf': 'Métricas — Santa Fe',
     auditoria: 'Seguimiento y Acompañamiento de Sede',
     efemerides: 'Efemérides',
     'ayuda-ch': 'Ayuda — Control Horario',
@@ -225,9 +235,25 @@ export default function RRHHApp() {
       <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
         {/* Top Bar */}
         <header className="topbar">
+          {/* Background video */}
+          <div className="topbar__video-bg">
+            <video
+              src="/Blue_drop_moving_left_right_202606091400.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+            />
+          </div>
           <div>
-            <h1 className="topbar__title">
-              <span className="topbar__title-accent">RRHH</span> {titles[activeView] || ''}
+            <h1 className="topbar__title topbar__title--wave">
+              {'RRHH'.split('').map((char, i) => (
+                <span key={`r-${i}`} className="topbar__wave-letter topbar__title-accent" style={{ animationDelay: `${i * 0.08}s` }}>{char}</span>
+              ))}
+              <span className="topbar__wave-letter" style={{ animationDelay: `${4 * 0.08}s` }}>&nbsp;</span>
+              {(titles[activeView] || '').split('').map((char, i) => (
+                <span key={`t-${i}`} className="topbar__wave-letter" style={{ animationDelay: `${(5 + i) * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
+              ))}
             </h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -287,6 +313,12 @@ export default function RRHHApp() {
 
           {activeView === 'config' && (
             <PlaceholderPanel title="Configuración" icon="⚙️" />
+          )}
+
+          {activeView === 'metricas-sf' && (
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <MetricasSantaFeApp embedded />
+            </div>
           )}
         </Suspense>
       </main>

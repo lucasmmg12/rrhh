@@ -2,10 +2,12 @@ import { useState } from 'react';
 import {
   Home, Building2, Calendar, Clock, ClipboardCheck, CalendarHeart,
   PanelLeftClose, PanelLeft, ChevronDown, Settings, Timer, HelpCircle,
+  BarChart3,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
   const [auditOpen, setAuditOpen] = useState(false);
+  const [metricasOpen, setMetricasOpen] = useState(false);
 
   // Sub-items dentro de "Auditoría"
   const auditSubItems = [
@@ -41,8 +43,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
           style={{
             display: 'flex', alignItems: 'center', gap: '10px',
             width: '100%', padding: '10px 16px', border: 'none',
-            background: isGroupActive ? 'var(--primary-50, #EBF2FA)' : 'transparent',
-            color: isGroupActive ? 'var(--primary-500, #1E5FA6)' : 'var(--neutral-500, #64748B)',
+            background: isGroupActive ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+            color: isGroupActive ? '#ffffff' : 'rgba(255, 255, 255, 0.7)',
             cursor: 'pointer', borderRadius: 'var(--radius-md, 8px)',
             fontSize: '0.82rem', fontWeight: 700, transition: 'all 0.15s',
             textAlign: 'left',
@@ -51,7 +53,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
           <GroupIcon size={20} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>{label}</span>
           <ChevronDown size={14} style={{
-            transition: 'transform 0.2s ease',
+            transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
             transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
             opacity: 0.5,
           }} />
@@ -59,7 +61,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
 
         {isOpen && (
           <div className="animate-fade-in" style={{
-            marginLeft: '20px', borderLeft: '2px solid var(--neutral-200, #E2E8F0)',
+            marginLeft: '20px', borderLeft: '2px solid rgba(255, 255, 255, 0.2)',
             paddingLeft: '0', marginTop: '2px',
           }}>
             {subItems.map(item => {
@@ -86,6 +88,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
 
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
+      {/* Animated video background */}
+      <div className="sidebar__video-bg">
+        <video
+          src="/anima_la_imagen_202606091409.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+      </div>
       <div className="sidebar__brand">
         <div className="sidebar__logo">
           <img
@@ -101,8 +113,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
           />
           {!collapsed && (
             <div className="sidebar__brand-text animate-fade-in">
-              <span className="sidebar__brand-name">RRHH</span>
-              <span className="sidebar__brand-sub">Sanatorio Argentino</span>
+              <span className="sidebar__brand-name" style={{ display: 'flex' }}>
+                {'RRHH'.split('').map((char, i) => (
+                  <span key={i} style={{ display: 'inline-block', animation: 'title-wave 3s ease-in-out infinite', animationDelay: `${i * 0.08}s` }}>{char}</span>
+                ))}
+              </span>
+              <span className="sidebar__brand-sub" style={{ display: 'flex' }}>
+                {'Sanatorio Argentino'.split('').map((char, i) => (
+                  <span key={i} style={{ display: 'inline-block', animation: 'title-wave 3s ease-in-out infinite', animationDelay: `${(i + 4) * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
+                ))}
+              </span>
             </div>
           )}
         </div>
@@ -162,6 +182,18 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
             margin: '4px 16px 4px',
           }} />
         )}
+
+        {/* ─── Métricas (collapsible) ─── */}
+        {renderGroup({
+          label: 'Métricas',
+          icon: BarChart3,
+          isOpen: metricasOpen,
+          setOpen: setMetricasOpen,
+          isGroupActive: activeView === 'metricas-sf',
+          subItems: [
+            { id: 'metricas-sf', label: 'Santa Fe', icon: BarChart3 },
+          ],
+        })}
 
         {/* ─── Auditoría ─── */}
         {(() => {
