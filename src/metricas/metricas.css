@@ -306,6 +306,81 @@
   font-weight: 500;
 }
 
+/* ─── Chart Help (interpretation guide) ─── */
+.mt-chart-help {
+  margin-bottom: 0.75rem;
+}
+
+.mt-chart-help__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.mt-chart-help__toggle:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.mt-chart-help__content {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #f8fafc 100%);
+  border: 1px solid #bae6fd;
+  border-left: 3px solid #0ea5e9;
+  border-radius: 0 10px 10px 0;
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.mt-chart-help__text {
+  margin: 0 0 8px 0;
+}
+
+.mt-chart-help__tips {
+  font-size: 0.72rem;
+  color: #475569;
+}
+
+.mt-chart-help__tips strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1e293b;
+  font-size: 0.72rem;
+}
+
+.mt-chart-help__tips ul {
+  margin: 0;
+  padding-left: 16px;
+  list-style: none;
+}
+
+.mt-chart-help__tips li {
+  position: relative;
+  padding: 2px 0;
+  padding-left: 8px;
+}
+
+.mt-chart-help__tips li::before {
+  content: '▸';
+  position: absolute;
+  left: -10px;
+  color: #0ea5e9;
+  font-weight: 800;
+}
+
 /* ─── Heatmap ─── */
 .mt-heatmap {
   display: flex;

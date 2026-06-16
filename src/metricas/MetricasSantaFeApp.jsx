@@ -23,6 +23,36 @@ import {
 } from './metricasService';
 import './metricas.css';
 
+// ─── Reusable Chart Help Component ─────────────────────────
+function ChartHelp({ text, tips }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="mt-chart-help">
+      <button
+        className="mt-chart-help__toggle"
+        onClick={() => setOpen(p => !p)}
+      >
+        <span style={{ fontSize: '0.9rem' }}>{open ? '📖' : '💡'}</span>
+        <span>{open ? 'Ocultar guía' : '¿Cómo interpretar este gráfico?'}</span>
+        <span style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', fontSize: '0.7rem' }}>▼</span>
+      </button>
+      {open && (
+        <div className="mt-chart-help__content animate-fade-in">
+          <p className="mt-chart-help__text">{text}</p>
+          {tips && tips.length > 0 && (
+            <div className="mt-chart-help__tips">
+              <strong>Claves de lectura:</strong>
+              <ul>
+                {tips.map((tip, i) => <li key={i}>{tip}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════
@@ -299,6 +329,14 @@ function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMe
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">🔥 Días más concurridos</span>
           </div>
+          <ChartHelp
+            text="Muestra la cantidad total de visitas agrupadas por día de la semana (Lunes a Domingo). El color más oscuro indica mayor concurrencia. Permite identificar los días con mayor carga asistencial."
+            tips={[
+              'Los colores van de celeste claro (menor actividad) a azul oscuro (mayor actividad)',
+              'Compará días de semana vs. fin de semana para evaluar la distribución de la demanda',
+              'Días con poca actividad pueden representar oportunidades de redistribución de agenda',
+            ]}
+          />
           <HeatmapDias data={heatmapDias} />
         </div>
 
@@ -308,6 +346,14 @@ function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMe
             <span className="mt-chart-card__title">🏦 Obras Sociales</span>
             <span className="mt-chart-card__subtitle">Top 10</span>
           </div>
+          <ChartHelp
+            text='Gráfico de torta que muestra la proporción de visitas según la obra social del paciente (campo "Cliente" del sistema). Las 10 obras sociales con más visitas se muestran individualmente y el resto se agrupa en "Otros".'
+            tips={[
+              'Pasá el mouse sobre cada sector para ver el porcentaje exacto y la cantidad de visitas',
+              'Obras sociales dominantes pueden indicar convenios fuertes o perfiles de población atendida',
+              'La categoría "Otros" agrupa las obras sociales con menor volumen individual',
+            ]}
+          />
           <PieObrasSociales data={obrasSociales} />
         </div>
 
@@ -317,6 +363,14 @@ function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMe
             <span className="mt-chart-card__title">🏆 Especialidades más concurridas</span>
             <span className="mt-chart-card__subtitle">Top 15</span>
           </div>
+          <ChartHelp
+            text="Lista ordenada de las 15 especialidades médicas con mayor cantidad de visitas registradas. La barra horizontal muestra la proporción relativa respecto a la especialidad líder."
+            tips={[
+              '🥇🥈🥉 indican las tres especialidades con más demanda',
+              'Especialidades con alta demanda pueden requerir mayor asignación de profesionales o turnos',
+              'Comparar con la cantidad de médicos disponibles para detectar sobrecarga o capacidad ociosa',
+            ]}
+          />
           <RankingList data={rankEspecialidades} color="#1E5FA6" />
         </div>
 
@@ -325,6 +379,14 @@ function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMe
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">📈 Visitas por mes</span>
           </div>
+          <ChartHelp
+            text="Gráfico de línea que muestra la evolución temporal de la cantidad total de visitas mes a mes. Permite identificar estacionalidad, tendencias de crecimiento o caída en la demanda."
+            tips={[
+              'Picos pueden indicar campañas de salud, estacionalidad (invierno = más consultas) o eventos especiales',
+              'Caídas abruptas pueden correlacionar con feriados, vacaciones o problemas operativos',
+              'La tendencia general (subiendo, bajando, estable) indica la evolución de la demanda',
+            ]}
+          />
           <LineVisitasMes data={visitasMes} />
         </div>
       </div>
@@ -345,6 +407,16 @@ function HeatmapsView({ heatmapDias, heatmapHoras, heatmapMatrix }) {
             <span className="mt-chart-card__title">🗓️ Mapa de calor — Día × Hora</span>
             <span className="mt-chart-card__subtitle">Cruce de día de la semana y hora del día</span>
           </div>
+          <ChartHelp
+            text="Grilla matricial que cruza los 7 días de la semana (filas) con cada hora del día (columnas). Cada celda muestra la cantidad de visitas para esa combinación específica día+hora. Los colores más oscuros indican mayor concentración."
+            tips={[
+              'Pasá el mouse sobre cada celda para ver el detalle exacto (día, hora y cantidad)',
+              'Las celdas se amplían al pasar el cursor para facilitar la lectura',
+              'Buscá bloques de color oscuro consecutivos: indican las franjas horarias de mayor presión asistencial',
+              'Las horas sin actividad (·) no se muestran si no tienen ningún registro en toda la semana',
+              'Útil para planificar refuerzos de personal en las franjas críticas',
+            ]}
+          />
           <HeatmapMatrixDiaHora data={heatmapMatrix} />
         </div>
 
@@ -353,6 +425,14 @@ function HeatmapsView({ heatmapDias, heatmapHoras, heatmapMatrix }) {
             <span className="mt-chart-card__title">🔥 Mapa de calor — Días de la semana</span>
             <span className="mt-chart-card__subtitle">Distribución de visitas por día</span>
           </div>
+          <ChartHelp
+            text="Muestra el volumen total de visitas para cada día de la semana (Lunes a Domingo), sumando todas las horas. Permite ver de un vistazo qué días tienen más carga."
+            tips={[
+              'Colores más oscuros = días con más visitas',
+              'Compará la diferencia entre el día más activo y el menos activo para evaluar la distribución',
+              'Ideal para planificar dotación de personal semanal',
+            ]}
+          />
           <HeatmapDias data={heatmapDias} />
         </div>
 
@@ -361,6 +441,15 @@ function HeatmapsView({ heatmapDias, heatmapHoras, heatmapMatrix }) {
             <span className="mt-chart-card__title">⏰ Mapa de calor — Horario</span>
             <span className="mt-chart-card__subtitle">Distribución de visitas por hora del día (0-23h)</span>
           </div>
+          <ChartHelp
+            text="Muestra la cantidad total de visitas para cada hora del día (00:00 a 23:00), sumando todos los días. Identifica las horas pico y los valles de actividad."
+            tips={[
+              'Las horas con color más intenso son las de mayor demanda asistencial',
+              'Horas con valor 0 o muy bajo indican que no se atiende en ese horario',
+              'Compará la franja matutina vs. vespertina para equilibrar la oferta de turnos',
+              'Picos pronunciados pueden indicar necesidad de ampliar la ventana horaria',
+            ]}
+          />
           <HeatmapHoras data={heatmapHoras} />
         </div>
       </div>
@@ -380,6 +469,14 @@ function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita, rankGru
             <span className="mt-chart-card__title">🏥 Especialidades más concurridas</span>
             <span className="mt-chart-card__subtitle">Top 15</span>
           </div>
+          <ChartHelp
+            text="Ranking de las 15 especialidades médicas con más visitas registradas. La barra de cada ítem indica la proporción relativa respecto a la especialidad más visitada."
+            tips={[
+              'Las primeras 3 posiciones tienen medallas (🥇🥈🥉) y barra más intensa',
+              'Si una especialidad concentra demasiadas visitas, puede requerir descongestión',
+              'Especialidades en las últimas posiciones podrían necesitar mayor difusión o tienen baja oferta',
+            ]}
+          />
           <RankingList data={rankEspecialidades} color="#1E5FA6" />
         </div>
 
@@ -388,6 +485,14 @@ function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita, rankGru
             <span className="mt-chart-card__title">👨‍⚕️ Ranking por Médico</span>
             <span className="mt-chart-card__subtitle">Top 15 por cantidad de visitas</span>
           </div>
+          <ChartHelp
+            text="Los 15 profesionales con mayor volumen de atención. Indica qué médicos concentran la mayor carga de pacientes."
+            tips={[
+              'Médicos con volúmenes muy altos pueden estar sobrecargados',
+              'Una distribución desigual puede afectar la calidad de atención y tiempos de espera',
+              'Útil para evaluar redistribución de agendas y equilibrar cargas laborales',
+            ]}
+          />
           <RankingList data={rankMedicos} color="#7C3AED" />
         </div>
 
@@ -396,6 +501,14 @@ function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita, rankGru
             <span className="mt-chart-card__title">📋 Ranking por Tipo de Visita</span>
             <span className="mt-chart-card__subtitle">Top 15</span>
           </div>
+          <ChartHelp
+            text='Clasificación de visitas según su tipo (ej: "Primera vez", "Control", "Urgencia", etc.). Muestra qué tipos de atención son más frecuentes.'
+            tips={[
+              'Un alto porcentaje de controles puede indicar buena adherencia al seguimiento',
+              'Muchas consultas de primera vez pueden reflejar captación de nuevos pacientes',
+              'Tipos poco frecuentes pueden ser oportunidades de crecimiento o servicios especializados',
+            ]}
+          />
           <RankingList data={rankTipoVisita} color="#0891B2" />
         </div>
 
@@ -404,6 +517,14 @@ function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita, rankGru
             <span className="mt-chart-card__title">📂 Ranking por Grupo de Agenda</span>
             <span className="mt-chart-card__subtitle">Top 15</span>
           </div>
+          <ChartHelp
+            text="Ranking de los grupos de agenda más utilizados. Los grupos de agenda son las categorías organizativas que agrupan los turnos por servicio, consultorio o tipo de prestación."
+            tips={[
+              'Grupos con alto volumen pueden requerir más espacios de agenda o consultorios',
+              'Compará con la disponibilidad de consultorios para detectar cuellos de botella',
+              'Útil para evaluar si la oferta de turnos se ajusta a la demanda real',
+            ]}
+          />
           <RankingList data={rankGrupoAgenda} color="#D97706" />
         </div>
       </div>
@@ -422,6 +543,16 @@ function TendenciasView({ visitasMes }) {
           <span className="mt-chart-card__title">📈 Evolución de visitas por mes</span>
           <span className="mt-chart-card__subtitle">Tendencia temporal completa</span>
         </div>
+        <ChartHelp
+          text="Gráfico de área que muestra la evolución mensual del total de visitas a lo largo de todo el período disponible. El área sombreada debajo de la línea facilita la visualización de la magnitud. Cada punto representa un mes."
+          tips={[
+            'Pasá el mouse sobre cada punto para ver el mes y la cantidad exacta de visitas',
+            'Tendencia ascendente = crecimiento de la demanda; descendente = contracción',
+            'Buscá patrones estacionales: ¿hay meses que siempre suben o bajan?',
+            'Caídas abruptas pueden correlacionarse con feriados largos, vacaciones o eventos externos',
+            'Comparar con otros indicadores (ausentismo, especialidad) ayuda a entender las causas',
+          ]}
+        />
         <div style={{ width: '100%', height: 400 }}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={visitasMes} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
@@ -782,6 +913,15 @@ function AusentismoView({ ausentismo }) {
             <span className="mt-chart-card__title">📊 Estado de Asistencia</span>
             <span className="mt-chart-card__subtitle">Distribución general ({ausentismo.total.toLocaleString()} registros)</span>
           </div>
+          <ChartHelp
+            text='Muestra la distribución porcentual de todos los estados de asistencia registrados (ej: "Presente", "Ausente", "Cancelado", etc.). Cada barra horizontal indica el porcentaje y la cantidad absoluta de visitas en cada estado.'
+            tips={[
+              'Verde = presente/asistió; Rojo = ausente; Amarillo = cancelado',
+              'Una tasa de ausentismo superior al 15% es crítica y requiere acción (ej: recordatorios automáticos, políticas de reprogramación)',
+              'Compará el ausentismo con el promedio del sector salud (~10-15%) para evaluar el rendimiento',
+              'Los turnos no aprovechados representan un costo directo para la institución',
+            ]}
+          />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0.5rem 0' }}>
             {ausentismo.breakdown.map((item, i) => {
               const pct = parseFloat(item.pct);
@@ -817,6 +957,16 @@ function AusentismoView({ ausentismo }) {
             <span className="mt-chart-card__title">🚫 Tasa de Ausentismo por Especialidad</span>
             <span className="mt-chart-card__subtitle">Porcentaje de ausentes (mín. 20 turnos)</span>
           </div>
+          <ChartHelp
+            text='Gráfico de barras horizontales que muestra el porcentaje de ausentismo de cada especialidad (solo aquellas con al menos 20 turnos registrados para evitar distorsiones estadísticas). Se colorean según el nivel de riesgo.'
+            tips={[
+              '🔴 Rojo (>20%): ausentismo crítico, requiere intervención urgente',
+              '🟡 Amarillo (10-20%): ausentismo moderado, monitorear de cerca',
+              '🟢 Verde (<10%): ausentismo saludable, buen rendimiento',
+              'Pasá el mouse sobre cada barra para ver el detalle: ausentes / total de turnos',
+              'Especialidades con alto ausentismo pueden beneficiarse de confirmación previa de turnos',
+            ]}
+          />
           {ausentismo.ausentismoByEsp.length === 0 ? (
             <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>
               No se detectaron registros de ausentismo en los datos.
@@ -886,6 +1036,15 @@ function AvanzadoView({ pacientesRec, heatmapMatrix }) {
             <span className="mt-chart-card__title">👤 Pacientes más frecuentes</span>
             <span className="mt-chart-card__subtitle">Top 15 por cantidad de visitas</span>
           </div>
+          <ChartHelp
+            text="Ranking de los 15 pacientes que más visitas han realizado en el período analizado. Identifica pacientes crónicos, frecuentes o con necesidades de seguimiento intensivo."
+            tips={[
+              'Pacientes con muchas visitas pueden tener condiciones crónicas que requieren gestión proactiva',
+              'Un alto volumen de un solo paciente puede indicar derivaciones internas recurrentes',
+              'Útil para programas de fidelización o seguimiento especial',
+              'Los datos son anónimos por ID, verificar identidad en el sistema fuente si es necesario',
+            ]}
+          />
           <RankingList data={pacientesRec} color="#059669" />
         </div>
 
@@ -895,6 +1054,15 @@ function AvanzadoView({ pacientesRec, heatmapMatrix }) {
             <span className="mt-chart-card__title">⏱️ Análisis de Horas Pico</span>
             <span className="mt-chart-card__subtitle">Horarios con mayor y menor demanda</span>
           </div>
+          <ChartHelp
+            text="Análisis comparativo de los 5 horarios con más demanda (rojo) y los 5 con menos demanda (verde), calculados sobre el total acumulado de todos los días. Permite identificar la distribución de carga horaria."
+            tips={[
+              'Los horarios rojos son los que concentran la mayor presión asistencial',
+              'Los horarios verdes tienen mayor disponibilidad y pueden absorber más turnos',
+              'Redistribuir turnos de franjas rojas a verdes puede reducir tiempos de espera',
+              'Útil para definir horarios de apertura/cierre de consultorios y dotación de recepción',
+            ]}
+          />
           <PeakHoursAnalysis data={heatmapMatrix} />
         </div>
       </div>
