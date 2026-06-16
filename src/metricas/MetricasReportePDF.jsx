@@ -88,14 +88,41 @@ export default function MetricasReportePDF({
       const pdfWidth = 210;
       const pdfHeight = 297;
 
+      // Wait for charts to fully render
+      await new Promise(r => setTimeout(r, 800));
+
       for (let i = 0; i < pages.length; i++) {
         setProgress(10 + Math.round((i / pages.length) * 80));
+
+        // Scroll page into view to ensure rendering
+        pages[i].scrollIntoView({ behavior: 'instant', block: 'start' });
+        await new Promise(r => setTimeout(r, 400));
+
+        const pageRect = pages[i].getBoundingClientRect();
+        if (pageRect.width === 0 || pageRect.height === 0) continue;
+
         const canvas = await html2canvas(pages[i], {
           scale: 2,
           useCORS: true,
-          backgroundColor: '#ffffff',
+          backgroundColor: i === 0 ? '#0f172a' : '#ffffff',
           logging: false,
+          windowWidth: 794,
+          windowHeight: 1123,
+          width: pageRect.width,
+          height: pageRect.height,
+          onclone: (doc) => {
+            // Ensure SVGs have explicit dimensions for html2canvas
+            doc.querySelectorAll('svg').forEach(svg => {
+              if (!svg.getAttribute('width')) {
+                const rect = svg.getBoundingClientRect();
+                if (rect.width > 0) svg.setAttribute('width', rect.width);
+                if (rect.height > 0) svg.setAttribute('height', rect.height);
+              }
+            });
+          },
         });
+
+        if (canvas.width === 0 || canvas.height === 0) continue;
 
         const imgData = canvas.toDataURL('image/jpeg', 0.92);
         const imgWidth = pdfWidth;
