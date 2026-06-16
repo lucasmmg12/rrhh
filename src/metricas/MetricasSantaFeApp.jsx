@@ -23,6 +23,8 @@ import {
 } from './metricasService';
 import './metricas.css';
 
+const MetricasReportePDF = React.lazy(() => import('./MetricasReportePDF'));
+
 // ─── Reusable Chart Help Component ─────────────────────────
 function ChartHelp({ text, tips }) {
   const [open, setOpen] = React.useState(false);
@@ -66,6 +68,7 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const fileInputRef = useRef(null);
+  const [showReport, setShowReport] = useState(false);
 
   // Cross-filter: selected specialty (null = show all)
   const [selectedEspecialidad, setSelectedEspecialidad] = useState(null);
@@ -155,6 +158,7 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   }, [successMsg]);
 
   return (
+    <>
     <div className="mt">
       {/* ─── HERO ─── */}
       <div className="mt-hero">
@@ -166,6 +170,11 @@ export default function MetricasSantaFeApp({ embedded = false }) {
             </p>
           </div>
           <div className="mt-hero__badge">📍 SANTA FE</div>
+          {data.length > 0 && (
+            <button className="mt-hero__report-btn" onClick={() => setShowReport(true)}>
+              📄 Generar Informe PDF
+            </button>
+          )}
         </div>
       </div>
 
@@ -315,6 +324,24 @@ export default function MetricasSantaFeApp({ embedded = false }) {
         </>
       )}
     </div>
+
+      {/* ─── PDF REPORT OVERLAY ─── */}
+      {showReport && (
+        <React.Suspense fallback={<div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#e2e8f0', fontSize: '1rem' }}>Cargando informe...</div>}>
+          <MetricasReportePDF
+            kpis={kpis}
+            heatmapDias={heatmapDias}
+            obrasSociales={obrasSociales}
+            rankEspecialidades={rankEspecialidades}
+            rankMedicos={rankMedicos}
+            visitasMes={visitasMes}
+            heatmapMatrix={heatmapMatrix}
+            rankGrupoAgenda={rankGrupoAgenda}
+            onClose={() => setShowReport(false)}
+          />
+        </React.Suspense>
+      )}
+    </>
   );
 }
 
