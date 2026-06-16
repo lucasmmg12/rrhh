@@ -786,7 +786,7 @@ function LineVisitasMes({ data }) {
   return (
     <div style={{ width: '100%', height: 260 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 5, right: 20, left: 5, bottom: 5 }}>
+        <LineChart data={data} margin={{ top: 20, right: 20, left: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis
             dataKey="shortLabel"
@@ -817,8 +817,19 @@ function LineVisitasMes({ data }) {
             dataKey="value"
             stroke="#1E5FA6"
             strokeWidth={2.5}
-            dot={{ r: 3, fill: '#1E5FA6', strokeWidth: 2, stroke: '#ffffff' }}
-            activeDot={{ r: 5, fill: '#1E5FA6', stroke: '#ffffff', strokeWidth: 2 }}
+            dot={{ r: 4, fill: '#1E5FA6', strokeWidth: 2, stroke: '#ffffff' }}
+            activeDot={{ r: 6, fill: '#1E5FA6', stroke: '#ffffff', strokeWidth: 2 }}
+            label={({ x, y, value }) => (
+              <text
+                x={x} y={y - 12}
+                textAnchor="middle"
+                fill="#1e3a8a"
+                fontSize={11}
+                fontWeight={700}
+              >
+                {value?.toLocaleString()}
+              </text>
+            )}
           />
         </LineChart>
       </ResponsiveContainer>

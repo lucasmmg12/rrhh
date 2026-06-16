@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════
 -- MÉTRICAS SANTA FE — Server-Side Aggregation Functions
--- Run this in Supabase SQL Editor to enable RPC calls
+-- Fixes: uses fecha_visita for DOW calc, filters OS by number prefix
 -- ═══════════════════════════════════════════════════════════
 
 -- ─── KPIs ────────────────────────────────────────────────
@@ -10,20 +10,20 @@ RETURNS json LANGUAGE sql STABLE AS $$
     'totalVisitas', COUNT(*),
     'especialidades', COUNT(DISTINCT especialidad),
     'medicos', COUNT(DISTINCT responsable),
-    'obrasSociales', COUNT(DISTINCT cliente)
+    'obrasSociales', COUNT(DISTINCT cliente) FILTER (WHERE cliente ~ '^\d')
   )
   FROM metricas_visitas_sf;
 $$;
 
--- ─── Heatmap: Días de la semana ─────────────────────────
+-- ─── Heatmap: Días (calc from fecha_visita) ─────────────
 CREATE OR REPLACE FUNCTION metricas_heatmap_dias()
 RETURNS json LANGUAGE sql STABLE AS $$
-  SELECT json_agg(row_to_json(t) ORDER BY t.dia_semana)
+  SELECT json_agg(row_to_json(t) ORDER BY t.dow)
   FROM (
-    SELECT dia_semana, COUNT(*) AS value
+    SELECT EXTRACT(DOW FROM fecha_visita)::int AS dow, COUNT(*) AS value
     FROM metricas_visitas_sf
-    WHERE dia_semana IS NOT NULL
-    GROUP BY dia_semana
+    WHERE fecha_visita IS NOT NULL
+    GROUP BY dow
   ) t;
 $$;
 
@@ -44,16 +44,16 @@ CREATE OR REPLACE FUNCTION metricas_heatmap_matrix()
 RETURNS json LANGUAGE sql STABLE AS $$
   SELECT json_agg(row_to_json(t))
   FROM (
-    SELECT dia_semana, hora_numero, COUNT(*) AS value
+    SELECT EXTRACT(DOW FROM fecha_visita)::int AS dow, hora_numero, COUNT(*) AS value
     FROM metricas_visitas_sf
-    WHERE dia_semana IS NOT NULL AND hora_numero IS NOT NULL
+    WHERE fecha_visita IS NOT NULL AND hora_numero IS NOT NULL
       AND hora_numero >= 0 AND hora_numero < 24
-    GROUP BY dia_semana, hora_numero
-    ORDER BY dia_semana, hora_numero
+    GROUP BY dow, hora_numero
+    ORDER BY dow, hora_numero
   ) t;
 $$;
 
--- ─── Obras Sociales (Top 10 + Otros) ────────────────────
+-- ─── Obras Sociales (solo las que empiezan con número) ──
 CREATE OR REPLACE FUNCTION metricas_obras_sociales(top_n int DEFAULT 10)
 RETURNS json LANGUAGE sql STABLE AS $$
   WITH ranked AS (
@@ -61,7 +61,7 @@ RETURNS json LANGUAGE sql STABLE AS $$
       TRIM(regexp_replace(cliente, '^\d+\s*-\s*', '')) AS name,
       COUNT(*) AS value
     FROM metricas_visitas_sf
-    WHERE cliente IS NOT NULL
+    WHERE cliente IS NOT NULL AND cliente ~ '^\d'
     GROUP BY 1
     ORDER BY value DESC
   ),
@@ -105,8 +105,33 @@ BEGIN
 END;
 $$;
 
+-- ─── Ranking filtrado por especialidad ──────────────────
+CREATE OR REPLACE FUNCTION metricas_ranking_filtered(campo text, esp text, top_n int DEFAULT 15)
+RETURNS json LANGUAGE plpgsql STABLE AS $$
+DECLARE
+  result json;
+BEGIN
+  IF esp IS NULL OR esp = '' THEN
+    RETURN metricas_ranking(campo, top_n);
+  END IF;
+  EXECUTE format(
+    'SELECT json_agg(row_to_json(t))
+     FROM (
+       SELECT %I AS name, COUNT(*) AS value
+       FROM metricas_visitas_sf
+       WHERE %I IS NOT NULL AND especialidad = $1
+       GROUP BY %I
+       ORDER BY value DESC
+       LIMIT %s
+     ) t',
+    campo, campo, campo, top_n
+  ) INTO result USING esp;
+  RETURN result;
+END;
+$$;
+
 -- ─── Visitas por Mes ────────────────────────────────────
-CREATE OR REPLACE FUNCTION metricas_visitas_por_mes()
+CREATE OR REPLACE FUNCTION metricas_visitas_por_mes(esp text DEFAULT NULL)
 RETURNS json LANGUAGE sql STABLE AS $$
   SELECT json_agg(row_to_json(t) ORDER BY t.mes_key)
   FROM (
@@ -115,7 +140,52 @@ RETURNS json LANGUAGE sql STABLE AS $$
       COUNT(*) AS value
     FROM metricas_visitas_sf
     WHERE fecha_visita IS NOT NULL
+      AND (esp IS NULL OR especialidad = esp)
     GROUP BY mes_key
+  ) t;
+$$;
+
+-- ─── Heatmap Días filtrado ──────────────────────────────
+CREATE OR REPLACE FUNCTION metricas_heatmap_dias_filtered(esp text DEFAULT NULL)
+RETURNS json LANGUAGE sql STABLE AS $$
+  SELECT json_agg(row_to_json(t) ORDER BY t.dow)
+  FROM (
+    SELECT EXTRACT(DOW FROM fecha_visita)::int AS dow, COUNT(*) AS value
+    FROM metricas_visitas_sf
+    WHERE fecha_visita IS NOT NULL
+      AND (esp IS NULL OR especialidad = esp)
+    GROUP BY dow
+  ) t;
+$$;
+
+-- ─── Obras Sociales filtrado ────────────────────────────
+CREATE OR REPLACE FUNCTION metricas_obras_sociales_filtered(esp text DEFAULT NULL, top_n int DEFAULT 10)
+RETURNS json LANGUAGE sql STABLE AS $$
+  WITH ranked AS (
+    SELECT 
+      TRIM(regexp_replace(cliente, '^\d+\s*-\s*', '')) AS name,
+      COUNT(*) AS value
+    FROM metricas_visitas_sf
+    WHERE cliente IS NOT NULL AND cliente ~ '^\d'
+      AND (esp IS NULL OR especialidad = esp)
+    GROUP BY 1
+    ORDER BY value DESC
+  ),
+  top AS (
+    SELECT name, value, ROW_NUMBER() OVER () AS rn
+    FROM ranked
+    LIMIT top_n
+  ),
+  otros AS (
+    SELECT 'Otros' AS name, SUM(value) AS value
+    FROM ranked
+    WHERE name NOT IN (SELECT name FROM top)
+  )
+  SELECT json_agg(row_to_json(t))
+  FROM (
+    SELECT name, value FROM top
+    UNION ALL
+    SELECT name, value FROM otros WHERE value > 0
   ) t;
 $$;
 
