@@ -99,7 +99,7 @@ export async function fetchVisitasSF() {
   while (true) {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, especialidad, cliente, responsable, tipo_visita')
+      .select('id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, paciente, grupo_agenda, especialidad, cliente, responsable, tipo_visita')
       .range(from, from + PAGE - 1);
 
     if (error) throw new Error(error.message);
@@ -266,4 +266,108 @@ function buildRanking(data, field, topN) {
       value,
       rank: i + 1,
     }));
+}
+
+// ─── HEATMAP MATRIX: Day × Hour (cross-tabulated) ─────────
+export function getHeatmapMatrixDiaHora(data) {
+  // 7 days × 24 hours matrix
+  const matrix = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  data.forEach(d => {
+    if (d.dia_semana != null && d.hora_numero != null && d.hora_numero >= 0 && d.hora_numero < 24) {
+      matrix[d.dia_semana][d.hora_numero]++;
+    }
+  });
+
+  // Find global max for intensity normalization
+  let maxVal = 1;
+  matrix.forEach(row => row.forEach(v => { if (v > maxVal) maxVal = v; }));
+
+  // Reorder: Lun→Dom
+  const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+  return {
+    days: dayOrder.map(i => DIAS_LABELS[i]),
+    hours: Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`),
+    cells: dayOrder.map(dayIdx =>
+      matrix[dayIdx].map((val, hourIdx) => ({
+        day: DIAS_LABELS[dayIdx],
+        hour: `${String(hourIdx).padStart(2, '0')}:00`,
+        value: val,
+        intensity: val / maxVal,
+      }))
+    ),
+    maxVal,
+  };
+}
+
+// ─── AUSENTISMO: Attendance stats ──────────────────────────
+export function getAusentismoStats(data) {
+  const asistenciaCounts = {};
+  let total = 0;
+  data.forEach(d => {
+    if (d.asistencia) {
+      asistenciaCounts[d.asistencia] = (asistenciaCounts[d.asistencia] || 0) + 1;
+      total++;
+    }
+  });
+
+  const breakdown = Object.entries(asistenciaCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([status, count]) => ({
+      status,
+      count,
+      pct: total > 0 ? ((count / total) * 100).toFixed(1) : '0',
+    }));
+
+  // Ausentismo by specialty (no-show rate per specialty)
+  const byEsp = {};
+  data.forEach(d => {
+    if (d.especialidad && d.asistencia) {
+      if (!byEsp[d.especialidad]) byEsp[d.especialidad] = { total: 0, noShow: 0 };
+      byEsp[d.especialidad].total++;
+      // Consider 'Ausente' or similar as no-show
+      const lower = d.asistencia.toLowerCase();
+      if (lower.includes('ausente') || lower.includes('no asist') || lower.includes('cancelad')) {
+        byEsp[d.especialidad].noShow++;
+      }
+    }
+  });
+
+  const ausentismoByEsp = Object.entries(byEsp)
+    .filter(([, v]) => v.total >= 20) // Only specialties with enough data
+    .map(([name, v]) => ({
+      name: name.length > 30 ? name.substring(0, 27) + '...' : name,
+      fullName: name,
+      total: v.total,
+      noShow: v.noShow,
+      rate: ((v.noShow / v.total) * 100).toFixed(1),
+    }))
+    .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate))
+    .slice(0, 15);
+
+  return { breakdown, total, ausentismoByEsp };
+}
+
+// ─── PACIENTES RECURRENTES ─────────────────────────────────
+export function getPacientesRecurrentes(data, topN = 15) {
+  const counts = {};
+  data.forEach(d => {
+    if (d.paciente) {
+      counts[d.paciente] = (counts[d.paciente] || 0) + 1;
+    }
+  });
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([name, value], i) => ({
+      name: name.length > 35 ? name.substring(0, 32) + '...' : name,
+      fullName: name,
+      value,
+      rank: i + 1,
+    }));
+}
+
+// ─── GRUPO AGENDA ──────────────────────────────────────────
+export function getRankingGrupoAgenda(data, topN = 15) {
+  return buildRanking(data, 'grupo_agenda', topN);
 }

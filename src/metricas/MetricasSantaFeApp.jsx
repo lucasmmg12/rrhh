@@ -16,6 +16,10 @@ import {
   getRankingMedicos,
   getRankingTipoVisita,
   getVisitasPorMes,
+  getHeatmapMatrixDiaHora,
+  getAusentismoStats,
+  getPacientesRecurrentes,
+  getRankingGrupoAgenda,
 } from './metricasService';
 import './metricas.css';
 
@@ -96,6 +100,10 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   const rankMedicos = useMemo(() => getRankingMedicos(data), [data]);
   const rankTipoVisita = useMemo(() => getRankingTipoVisita(data), [data]);
   const visitasMes = useMemo(() => getVisitasPorMes(data), [data]);
+  const heatmapMatrix = useMemo(() => getHeatmapMatrixDiaHora(data), [data]);
+  const ausentismo = useMemo(() => getAusentismoStats(data), [data]);
+  const pacientesRec = useMemo(() => getPacientesRecurrentes(data), [data]);
+  const rankGrupoAgenda = useMemo(() => getRankingGrupoAgenda(data), [data]);
 
   // Unique counts for KPIs
   const kpis = useMemo(() => {
@@ -222,6 +230,8 @@ export default function MetricasSantaFeApp({ embedded = false }) {
               { id: 'resumen', icon: '📊', label: 'Resumen' },
               { id: 'heatmaps', icon: '🔥', label: 'Mapas de Calor' },
               { id: 'rankings', icon: '🏆', label: 'Rankings' },
+              { id: 'ausentismo', icon: '🚫', label: 'Ausentismo' },
+              { id: 'avanzado', icon: '🔬', label: 'Análisis Avanzado' },
               { id: 'tendencias', icon: '📈', label: 'Tendencias' },
             ].map(tab => (
               <button
@@ -252,14 +262,21 @@ export default function MetricasSantaFeApp({ embedded = false }) {
             />
           )}
           {activeTab === 'heatmaps' && (
-            <HeatmapsView heatmapDias={heatmapDias} heatmapHoras={heatmapHoras} />
+            <HeatmapsView heatmapDias={heatmapDias} heatmapHoras={heatmapHoras} heatmapMatrix={heatmapMatrix} />
           )}
           {activeTab === 'rankings' && (
             <RankingsView
               rankEspecialidades={rankEspecialidades}
               rankMedicos={rankMedicos}
               rankTipoVisita={rankTipoVisita}
+              rankGrupoAgenda={rankGrupoAgenda}
             />
+          )}
+          {activeTab === 'ausentismo' && (
+            <AusentismoView ausentismo={ausentismo} />
+          )}
+          {activeTab === 'avanzado' && (
+            <AvanzadoView pacientesRec={pacientesRec} heatmapMatrix={heatmapMatrix} />
           )}
           {activeTab === 'tendencias' && (
             <TendenciasView visitasMes={visitasMes} />
@@ -318,10 +335,19 @@ function ResumenView({ heatmapDias, obrasSociales, rankEspecialidades, visitasMe
 // ═══════════════════════════════════════════════════════════
 //  HEATMAPS VIEW
 // ═══════════════════════════════════════════════════════════
-function HeatmapsView({ heatmapDias, heatmapHoras }) {
+function HeatmapsView({ heatmapDias, heatmapHoras, heatmapMatrix }) {
   return (
     <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
       <div className="mt-chart-grid--single" style={{ display: 'grid', gap: '1.25rem' }}>
+        {/* Matrix Heatmap - Day × Hour */}
+        <div className="mt-chart-card mt-chart-card--full">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">🗓️ Mapa de calor — Día × Hora</span>
+            <span className="mt-chart-card__subtitle">Cruce de día de la semana y hora del día</span>
+          </div>
+          <HeatmapMatrixDiaHora data={heatmapMatrix} />
+        </div>
+
         <div className="mt-chart-card">
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">🔥 Mapa de calor — Días de la semana</span>
@@ -345,7 +371,7 @@ function HeatmapsView({ heatmapDias, heatmapHoras }) {
 // ═══════════════════════════════════════════════════════════
 //  RANKINGS VIEW
 // ═══════════════════════════════════════════════════════════
-function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita }) {
+function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita, rankGrupoAgenda }) {
   return (
     <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
       <div className="mt-chart-grid">
@@ -365,12 +391,20 @@ function RankingsView({ rankEspecialidades, rankMedicos, rankTipoVisita }) {
           <RankingList data={rankMedicos} color="#7C3AED" />
         </div>
 
-        <div className="mt-chart-card mt-chart-card--full">
+        <div className="mt-chart-card">
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">📋 Ranking por Tipo de Visita</span>
             <span className="mt-chart-card__subtitle">Top 15</span>
           </div>
           <RankingList data={rankTipoVisita} color="#0891B2" />
+        </div>
+
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">📂 Ranking por Grupo de Agenda</span>
+            <span className="mt-chart-card__subtitle">Top 15</span>
+          </div>
+          <RankingList data={rankGrupoAgenda} color="#D97706" />
         </div>
       </div>
     </div>
@@ -643,4 +677,305 @@ function getPosClass(index) {
   if (index === 1) return 'mt-ranking__pos--silver';
   if (index === 2) return 'mt-ranking__pos--bronze';
   return 'mt-ranking__pos--default';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HEATMAP MATRIX: Day × Hour
+// ═══════════════════════════════════════════════════════════
+function HeatmapMatrixDiaHora({ data }) {
+  if (!data || !data.cells) return null;
+  // Filter hours with activity (typically 6-22)
+  const activeHours = [];
+  for (let h = 0; h < 24; h++) {
+    const hasData = data.cells.some(dayRow => dayRow[h]?.value > 0);
+    if (hasData) activeHours.push(h);
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', padding: '0.5rem 0' }}>
+      <table style={{ borderCollapse: 'separate', borderSpacing: '3px', width: '100%', minWidth: '600px' }}>
+        <thead>
+          <tr>
+            <th style={{ width: '50px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}></th>
+            {activeHours.map(h => (
+              <th key={h} style={{
+                fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600,
+                textAlign: 'center', padding: '4px 2px',
+              }}>
+                {String(h).padStart(2, '0')}h
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.cells.map((dayRow, dayIdx) => (
+            <tr key={dayIdx}>
+              <td style={{
+                fontSize: '0.75rem', fontWeight: 700, color: '#475569',
+                paddingRight: '8px', whiteSpace: 'nowrap',
+              }}>
+                {data.days[dayIdx]}
+              </td>
+              {activeHours.map(h => {
+                const cell = dayRow[h];
+                const bg = getHeatColor(cell.intensity);
+                const textColor = cell.intensity > 0.5 ? '#ffffff' : cell.value === 0 ? '#cbd5e1' : '#1e293b';
+                return (
+                  <td
+                    key={h}
+                    title={`${data.days[dayIdx]} ${String(h).padStart(2, '0')}:00 — ${cell.value.toLocaleString()} visitas`}
+                    style={{
+                      background: bg,
+                      color: textColor,
+                      textAlign: 'center',
+                      fontSize: '0.65rem',
+                      fontWeight: cell.intensity > 0.3 ? 700 : 500,
+                      padding: '6px 2px',
+                      borderRadius: '4px',
+                      minWidth: '32px',
+                      cursor: 'default',
+                      transition: 'transform 0.15s ease',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.zIndex = '10'; }}
+                    onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.zIndex = '0'; }}
+                  >
+                    {cell.value > 0 ? cell.value.toLocaleString() : '·'}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {/* Color legend */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '12px', justifyContent: 'center' }}>
+        <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Menos</span>
+        {[0, 0.2, 0.4, 0.6, 0.8, 1].map((intensity, i) => (
+          <div key={i} style={{
+            width: 20, height: 14, borderRadius: 3,
+            background: getHeatColor(intensity),
+            border: '1px solid rgba(0,0,0,0.06)',
+          }} />
+        ))}
+        <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Más</span>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AUSENTISMO VIEW
+// ═══════════════════════════════════════════════════════════
+function AusentismoView({ ausentismo }) {
+  const COLORS_STATUS = {
+    'Presente': '#059669',
+    'Ausente': '#DC2626',
+    'Cancelado': '#D97706',
+  };
+
+  return (
+    <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
+      <div className="mt-chart-grid">
+        {/* General breakdown */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">📊 Estado de Asistencia</span>
+            <span className="mt-chart-card__subtitle">Distribución general ({ausentismo.total.toLocaleString()} registros)</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0.5rem 0' }}>
+            {ausentismo.breakdown.map((item, i) => {
+              const pct = parseFloat(item.pct);
+              const color = COLORS_STATUS[item.status] || (item.status.toLowerCase().includes('ausente') ? '#DC2626' : item.status.toLowerCase().includes('present') ? '#059669' : '#64748B');
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', minWidth: '120px' }}>
+                    {item.status}
+                  </span>
+                  <div style={{ flex: 1, height: 24, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                    <div style={{
+                      height: '100%', width: `${pct}%`,
+                      background: color, borderRadius: 6,
+                      transition: 'width 0.5s ease',
+                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                      paddingRight: '8px',
+                    }}>
+                      {pct > 8 && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#fff' }}>{item.pct}%</span>}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', minWidth: '65px', textAlign: 'right' }}>
+                    {item.count.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Ausentismo by specialty */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">🚫 Tasa de Ausentismo por Especialidad</span>
+            <span className="mt-chart-card__subtitle">Porcentaje de ausentes (mín. 20 turnos)</span>
+          </div>
+          {ausentismo.ausentismoByEsp.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>
+              No se detectaron registros de ausentismo en los datos.
+            </p>
+          ) : (
+            <div style={{ width: '100%', height: Math.max(300, ausentismo.ausentismoByEsp.length * 28) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={ausentismo.ausentismoByEsp}
+                  layout="vertical"
+                  margin={{ top: 5, right: 60, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    tickFormatter={v => `${v}%`}
+                    domain={[0, 'auto']}
+                  />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    tick={{ fontSize: 10, fill: '#64748b' }}
+                    width={140}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 10,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                      fontSize: '0.78rem',
+                    }}
+                    formatter={(value, name, props) => [
+                      `${value}% (${props.payload.noShow} de ${props.payload.total})`,
+                      'Ausentismo',
+                    ]}
+                  />
+                  <Bar dataKey="rate" fill="#DC2626" radius={[0, 4, 4, 0]} barSize={16}>
+                    {ausentismo.ausentismoByEsp.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={parseFloat(entry.rate) > 20 ? '#DC2626' : parseFloat(entry.rate) > 10 ? '#F59E0B' : '#10B981'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ANÁLISIS AVANZADO VIEW
+// ═══════════════════════════════════════════════════════════
+function AvanzadoView({ pacientesRec, heatmapMatrix }) {
+  return (
+    <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
+      <div className="mt-chart-grid">
+        {/* Pacientes Recurrentes */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">👤 Pacientes más frecuentes</span>
+            <span className="mt-chart-card__subtitle">Top 15 por cantidad de visitas</span>
+          </div>
+          <RankingList data={pacientesRec} color="#059669" />
+        </div>
+
+        {/* Peak hours analysis */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">⏱️ Análisis de Horas Pico</span>
+            <span className="mt-chart-card__subtitle">Horarios con mayor y menor demanda</span>
+          </div>
+          <PeakHoursAnalysis data={heatmapMatrix} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Peak Hours Analysis ──────────────────────────────────
+function PeakHoursAnalysis({ data }) {
+  if (!data || !data.cells) return null;
+
+  // Calculate total per hour across all days
+  const hourTotals = new Array(24).fill(0);
+  data.cells.forEach(dayRow => {
+    dayRow.forEach((cell, h) => { hourTotals[h] += cell.value; });
+  });
+
+  // Find top 5 and bottom 5 active hours
+  const activeHours = hourTotals
+    .map((total, h) => ({ hour: h, total }))
+    .filter(h => h.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const top5 = activeHours.slice(0, 5);
+  const bottom5 = activeHours.slice(-5).reverse();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div>
+        <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: '#DC2626', marginBottom: '8px' }}>
+          🔴 Horarios con MAYOR demanda
+        </h4>
+        {top5.map((h, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+            <span style={{
+              fontSize: '0.75rem', fontWeight: 700, color: '#ffffff',
+              background: '#DC2626', borderRadius: '50%',
+              width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{i + 1}</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', minWidth: '50px' }}>
+              {String(h.hour).padStart(2, '0')}:00
+            </span>
+            <div style={{ flex: 1, height: 18, background: '#fef2f2', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${(h.total / top5[0].total) * 100}%`,
+                background: 'linear-gradient(90deg, #DC2626, #F87171)', borderRadius: 4,
+              }} />
+            </div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#DC2626' }}>
+              {h.total.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', marginBottom: '8px' }}>
+          🟢 Horarios con MENOR demanda
+        </h4>
+        {bottom5.map((h, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+            <span style={{
+              fontSize: '0.75rem', fontWeight: 700, color: '#ffffff',
+              background: '#059669', borderRadius: '50%',
+              width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{i + 1}</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', minWidth: '50px' }}>
+              {String(h.hour).padStart(2, '0')}:00
+            </span>
+            <div style={{ flex: 1, height: 18, background: '#f0fdf4', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${(h.total / (top5[0]?.total || 1)) * 100}%`,
+                background: 'linear-gradient(90deg, #059669, #34D399)', borderRadius: 4,
+              }} />
+            </div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669' }}>
+              {h.total.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
