@@ -1029,10 +1029,13 @@ function HeatmapMatrixDiaHora({ data }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  OPERADORAS VIEW (with cross-filter drill-down)
+//  OPERADORAS VIEW (with cross-filter drill-down + month filter)
 // ═══════════════════════════════════════════════════════════
-function OperadorasView({ data, rankOperadoras, sectorOperadora, operadorasStats, coverage }) {
+const MESES_NOMBRES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+function OperadorasView({ data, rankOperadoras: _rankAll, sectorOperadora: _secAll, operadorasStats: _statsAll, coverage: _covAll }) {
   const [selectedOp, setSelectedOp] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState('');  // '' = all months, 'YYYY-MM' = specific
 
   const SECTOR_COLORS = {
     'SECTOR 1': '#1E5FA6',
@@ -1041,13 +1044,34 @@ function OperadorasView({ data, rankOperadoras, sectorOperadora, operadorasStats
     'DIAGNÓSTICO': '#D97706',
   };
 
+  // Available months from data
+  const availableMonths = useMemo(() => {
+    const months = new Set();
+    data.forEach(d => {
+      if (d.fecha_visita) months.add(d.fecha_visita.slice(0, 7));
+    });
+    return [...months].sort().reverse(); // most recent first
+  }, [data]);
+
+  // Month-filtered base data (all operadora computations use this)
+  const monthData = useMemo(() => {
+    if (!selectedMonth) return data;
+    return data.filter(d => d.fecha_visita && d.fecha_visita.startsWith(selectedMonth));
+  }, [data, selectedMonth]);
+
+  // Recompute rankings/stats from month-filtered data
+  const rankOperadoras = useMemo(() => selectedMonth ? getRankingOperadoras(monthData) : _rankAll, [monthData, selectedMonth, _rankAll]);
+  const sectorOperadora = useMemo(() => selectedMonth ? getBreakdownSectorOperadora(monthData) : _secAll, [monthData, selectedMonth, _secAll]);
+  const operadorasStats = useMemo(() => selectedMonth ? getOperadorasStats(monthData) : _statsAll, [monthData, selectedMonth, _statsAll]);
+  const coverage = useMemo(() => selectedMonth ? getOperadoraCoverage(monthData) : _covAll, [monthData, selectedMonth, _covAll]);
+
   const totalSectores = sectorOperadora.reduce((sum, s) => sum + s.value, 0);
 
-  // Filtered data for selected operadora
+  // Filtered data for selected operadora (from month-filtered data)
   const filteredData = useMemo(() => {
     if (!selectedOp) return [];
-    return data.filter(d => d.operadora === selectedOp);
-  }, [data, selectedOp]);
+    return monthData.filter(d => d.operadora === selectedOp);
+  }, [monthData, selectedOp]);
 
   // Compute metrics for selected operadora
   const opHeatmapDias = useMemo(() => selectedOp ? getHeatmapDias(filteredData) : [], [filteredData, selectedOp]);
@@ -1064,8 +1088,67 @@ function OperadorasView({ data, rankOperadoras, sectorOperadora, operadorasStats
     return operadorasStats.find(s => s.name === selectedOp) || null;
   }, [selectedOp, operadorasStats]);
 
+  // Month label helper
+  const monthLabel = (key) => {
+    if (!key) return 'Todos los meses';
+    const [y, m] = key.split('-');
+    return `${MESES_NOMBRES[parseInt(m, 10) - 1]} ${y}`;
+  };
+
   return (
     <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
+      {/* ─── Month Filter Bar ─── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem',
+        padding: '0.75rem 1rem', borderRadius: 12,
+        background: '#ffffff', border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>📅 Período:</span>
+        <select
+          value={selectedMonth}
+          onChange={(e) => { setSelectedMonth(e.target.value); setSelectedOp(null); }}
+          style={{
+            padding: '6px 32px 6px 12px',
+            borderRadius: 8,
+            border: '1.5px solid #cbd5e1',
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            color: '#1e293b',
+            background: '#f8fafc',
+            cursor: 'pointer',
+            outline: 'none',
+            appearance: 'none',
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 10px center',
+          }}
+        >
+          <option value="">Todos los meses</option>
+          {availableMonths.map(m => (
+            <option key={m} value={m}>{monthLabel(m)}</option>
+          ))}
+        </select>
+        {selectedMonth && (
+          <button
+            onClick={() => { setSelectedMonth(''); setSelectedOp(null); }}
+            style={{
+              padding: '4px 10px', borderRadius: 6,
+              border: '1px solid #fcd34d', background: '#fef3c7',
+              fontSize: '0.75rem', fontWeight: 600, color: '#92400e',
+              cursor: 'pointer',
+            }}
+          >
+            ✕ Limpiar
+          </button>
+        )}
+        <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 'auto' }}>
+          {monthData.length.toLocaleString()} registros
+          {selectedMonth && ` en ${monthLabel(selectedMonth)}`}
+        </span>
+      </div>
+
       {/* Coverage Banner */}
       <div style={{
         padding: '1rem 1.25rem', borderRadius: 12, marginBottom: '1.25rem',
