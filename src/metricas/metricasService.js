@@ -171,8 +171,22 @@ export async function uploadRecords(records, onProgress) {
   const total = records.length;
   let uploaded = 0;
 
+  // Check if operadora columns exist in the table
+  const { error: probeErr } = await supabase
+    .from(TABLE)
+    .select('operadora')
+    .limit(1);
+
+  const hasOpCols = !probeErr;
+
   for (let i = 0; i < total; i += BATCH_SIZE) {
-    const batch = records.slice(i, i + BATCH_SIZE);
+    let batch = records.slice(i, i + BATCH_SIZE);
+
+    // Strip operadora fields if migration hasn't been run
+    if (!hasOpCols) {
+      batch = batch.map(({ usuario_cita_raw, operadora, sector_operadora, ...rest }) => rest);
+    }
+
     const { error } = await supabase
       .from(TABLE)
       .upsert(batch, { onConflict: 'id_visita' });
@@ -186,15 +200,27 @@ export async function uploadRecords(records, onProgress) {
 }
 
 // ─── FETCH ALL RECORDS ──────────────────────────────────────
+// Tries with operadora columns first; falls back if migration hasn't run yet
+const SELECT_FULL = 'id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, paciente, grupo_agenda, especialidad, cliente, responsable, tipo_visita, operadora, sector_operadora';
+const SELECT_LEGACY = 'id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, paciente, grupo_agenda, especialidad, cliente, responsable, tipo_visita';
+
 export async function fetchVisitasSF() {
   const allRecords = [];
   let from = 0;
   const PAGE = 1000;
 
+  // Detect which columns are available with a small probe query
+  const { error: probeErr } = await supabase
+    .from(TABLE)
+    .select('operadora')
+    .limit(1);
+
+  const selectCols = probeErr ? SELECT_LEGACY : SELECT_FULL;
+
   while (true) {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, paciente, grupo_agenda, especialidad, cliente, responsable, tipo_visita, operadora, sector_operadora')
+      .select(selectCols)
       .range(from, from + PAGE - 1);
 
     if (error) throw new Error(error.message);
