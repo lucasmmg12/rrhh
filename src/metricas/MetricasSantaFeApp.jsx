@@ -325,6 +325,7 @@ export default function MetricasSantaFeApp({ embedded = false }) {
           )}
           {activeTab === 'operadoras' && (
             <OperadorasView
+              data={data}
               rankOperadoras={rankOperadoras}
               sectorOperadora={sectorOperadora}
               operadorasStats={operadorasStats}
@@ -1028,9 +1029,11 @@ function HeatmapMatrixDiaHora({ data }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  OPERADORAS VIEW
+//  OPERADORAS VIEW (with cross-filter drill-down)
 // ═══════════════════════════════════════════════════════════
-function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, coverage }) {
+function OperadorasView({ data, rankOperadoras, sectorOperadora, operadorasStats, coverage }) {
+  const [selectedOp, setSelectedOp] = useState(null);
+
   const SECTOR_COLORS = {
     'SECTOR 1': '#1E5FA6',
     'SECTOR 2': '#0891B2',
@@ -1039,6 +1042,27 @@ function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, cove
   };
 
   const totalSectores = sectorOperadora.reduce((sum, s) => sum + s.value, 0);
+
+  // Filtered data for selected operadora
+  const filteredData = useMemo(() => {
+    if (!selectedOp) return [];
+    return data.filter(d => d.operadora === selectedOp);
+  }, [data, selectedOp]);
+
+  // Compute metrics for selected operadora
+  const opHeatmapDias = useMemo(() => selectedOp ? getHeatmapDias(filteredData) : [], [filteredData, selectedOp]);
+  const opObrasSociales = useMemo(() => selectedOp ? getObrasSociales(filteredData) : [], [filteredData, selectedOp]);
+  const opRankEsp = useMemo(() => selectedOp ? getRankingEspecialidades(filteredData) : [], [filteredData, selectedOp]);
+  const opRankMedicos = useMemo(() => selectedOp ? getRankingMedicos(filteredData) : [], [filteredData, selectedOp]);
+  const opVisitasMes = useMemo(() => selectedOp ? getVisitasPorMes(filteredData) : [], [filteredData, selectedOp]);
+  const opAusentismo = useMemo(() => selectedOp ? getAusentismoStats(filteredData) : null, [filteredData, selectedOp]);
+  const opHeatmapHoras = useMemo(() => selectedOp ? getHeatmapHoras(filteredData) : [], [filteredData, selectedOp]);
+
+  // Find selected operadora stats
+  const selectedStats = useMemo(() => {
+    if (!selectedOp) return null;
+    return operadorasStats.find(s => s.name === selectedOp) || null;
+  }, [selectedOp, operadorasStats]);
 
   return (
     <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
@@ -1071,27 +1095,47 @@ function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, cove
         </div>
       </div>
 
+      {/* Active filter indicator */}
+      {selectedOp && (
+        <div className="mt-filter-badge" style={{ marginBottom: '1rem' }}>
+          <span>👩‍💼 Filtrando por: <strong>{selectedOp}</strong></span>
+          {selectedStats && (
+            <span style={{ fontSize: '0.72rem', color: 'rgba(217,119,6,0.7)', marginLeft: '8px' }}>
+              {selectedStats.sector} · {selectedStats.total.toLocaleString()} turnos · {selectedStats.diasActivos} días activos · {selectedStats.promedioDiario} t/día
+            </span>
+          )}
+          <button className="mt-filter-badge__clear" onClick={() => setSelectedOp(null)}>
+            ✕ Quitar filtro
+          </button>
+        </div>
+      )}
+
       <div className="mt-chart-grid">
-        {/* Ranking Operadoras */}
+        {/* Ranking Operadoras — CLICKABLE */}
         <div className="mt-chart-card">
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">🏆 Ranking de Operadoras</span>
-            <span className="mt-chart-card__subtitle">Por cantidad de turnos asignados</span>
+            <span className="mt-chart-card__subtitle">Hacé click para filtrar</span>
           </div>
           <ChartHelp
-            text="Ranking de las operadoras que tomaron turnos, ordenado por volumen total. Se identifica automáticamente desde el campo 'Usuario Cita' del sistema, buscando la última acción realizada por una operadora conocida."
+            text="Ranking de las operadoras que tomaron turnos. Hacé click en cualquier operadora para ver sus métricas detalladas debajo."
             tips={[
+              'Click en una operadora = muestra sus métricas individuales',
+              'Click de nuevo en la misma = quita el filtro',
               'Las primeras 3 posiciones tienen medallas (🥇🥈🥉)',
-              'Una distribución muy desigual puede indicar sobrecarga en ciertas operadoras',
-              'Compará con los días activos para evaluar la eficiencia real',
             ]}
           />
           {rankOperadoras.length === 0 ? (
             <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>
-              No se identificaron operadoras en los datos. Verificá que el campo "Usuario Cita" esté presente en el Excel.
+              No se identificaron operadoras en los datos.
             </p>
           ) : (
-            <RankingList data={rankOperadoras} color="#D97706" />
+            <ClickableRankingList
+              data={rankOperadoras}
+              color="#D97706"
+              selectedValue={selectedOp}
+              onSelect={(name) => setSelectedOp(prev => prev === name ? null : name)}
+            />
           )}
         </div>
 
@@ -1102,11 +1146,10 @@ function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, cove
             <span className="mt-chart-card__subtitle">{totalSectores.toLocaleString()} turnos identificados</span>
           </div>
           <ChartHelp
-            text="Distribución porcentual de los turnos asignados según el sector de la operadora: Sector 1, Sector 2, Citología o Diagnóstico."
+            text="Distribución porcentual de los turnos asignados según el sector de la operadora."
             tips={[
               'Cada sector tiene un color fijo para facilitar la comparación',
               'Sectores con mayor volumen pueden necesitar más personal',
-              'Pasá el mouse sobre cada sector para ver el detalle',
             ]}
           />
           {sectorOperadora.length === 0 ? (
@@ -1160,16 +1203,8 @@ function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, cove
         <div className="mt-chart-card mt-chart-card--full">
           <div className="mt-chart-card__header">
             <span className="mt-chart-card__title">📋 Estadísticas Detalladas por Operadora</span>
-            <span className="mt-chart-card__subtitle">Productividad y días activos</span>
+            <span className="mt-chart-card__subtitle">Click en una fila para ver métricas</span>
           </div>
-          <ChartHelp
-            text="Tabla con métricas clave de cada operadora: total de turnos tomados, sector al que pertenece, cantidad de días en los que estuvo activa, y el promedio de turnos por día activo."
-            tips={[
-              'El promedio diario indica la productividad real: turnos tomados / días trabajados',
-              'Un promedio muy alto puede indicar sobrecarga; muy bajo puede ser ineficiencia o pocos días de trabajo',
-              'Los colores de sector permiten comparar rápidamente entre equipos',
-            ]}
-          />
           {operadorasStats.length === 0 ? (
             <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>Sin datos de operadoras</p>
           ) : (
@@ -1189,54 +1224,173 @@ function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, cove
                   </tr>
                 </thead>
                 <tbody>
-                  {operadorasStats.map((op, i) => (
-                    <tr key={i} style={{
-                      background: i % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      borderRadius: 8,
-                    }}>
-                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#94a3b8' }}>
-                        {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
-                      </td>
-                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
-                        {op.name}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '3px 10px',
-                          borderRadius: 20,
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          color: '#fff',
-                          background: SECTOR_COLORS[op.sector] || '#94a3b8',
-                        }}>
-                          {op.sector}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
-                        {op.total.toLocaleString()}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>
-                        {op.diasActivos}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        <span style={{
-                          fontWeight: 700,
-                          color: parseFloat(op.promedioDiario) > 30 ? '#DC2626' :
-                                 parseFloat(op.promedioDiario) > 15 ? '#D97706' : '#059669',
-                        }}>
-                          {op.promedioDiario}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: 4 }}>t/día</span>
-                      </td>
-                    </tr>
-                  ))}
+                  {operadorasStats.map((op, i) => {
+                    const isSelected = selectedOp === op.name;
+                    return (
+                      <tr
+                        key={i}
+                        onClick={() => setSelectedOp(prev => prev === op.name ? null : op.name)}
+                        style={{
+                          background: isSelected ? '#fef3c7' : i % 2 === 0 ? '#f8fafc' : '#ffffff',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          transition: 'background 0.15s ease',
+                          outline: isSelected ? '2px solid #D97706' : 'none',
+                        }}
+                        title={`Click para ${isSelected ? 'quitar filtro' : `ver métricas de ${op.name}`}`}
+                      >
+                        <td style={{ padding: '10px 12px', fontWeight: 700, color: '#94a3b8' }}>
+                          {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
+                          {op.name} {isSelected && <span style={{ color: '#D97706' }}>✓</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 10px',
+                            borderRadius: 20,
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                            color: '#fff',
+                            background: SECTOR_COLORS[op.sector] || '#94a3b8',
+                          }}>
+                            {op.sector}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
+                          {op.total.toLocaleString()}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>
+                          {op.diasActivos}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                          <span style={{
+                            fontWeight: 700,
+                            color: parseFloat(op.promedioDiario) > 30 ? '#DC2626' :
+                                   parseFloat(op.promedioDiario) > 15 ? '#D97706' : '#059669',
+                          }}>
+                            {op.promedioDiario}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: 4 }}>t/día</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </div>
       </div>
+
+      {/* ─── DRILL-DOWN: Métricas de operadora seleccionada ─── */}
+      {selectedOp && filteredData.length > 0 && (
+        <div style={{ marginTop: '1.5rem', animation: 'mtFadeIn 0.3s ease-out' }}>
+          <h3 style={{
+            fontSize: '1rem', fontWeight: 700, color: '#92400e',
+            marginBottom: '1rem', padding: '0.5rem 0',
+            borderBottom: '2px solid #fcd34d',
+          }}>
+            📊 Métricas de {selectedOp} — {filteredData.length.toLocaleString()} turnos
+          </h3>
+
+          <div className="mt-chart-grid">
+            {/* Heatmap Días */}
+            <div className="mt-chart-card">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">🔥 Días más concurridos</span>
+                <span className="mt-chart-card__subtitle">{selectedOp}</span>
+              </div>
+              <HeatmapDias data={opHeatmapDias} />
+            </div>
+
+            {/* Heatmap Horas */}
+            <div className="mt-chart-card">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">⏰ Distribución Horaria</span>
+                <span className="mt-chart-card__subtitle">{selectedOp}</span>
+              </div>
+              <HeatmapHoras data={opHeatmapHoras} />
+            </div>
+
+            {/* Especialidades */}
+            <div className="mt-chart-card">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">🏥 Especialidades</span>
+                <span className="mt-chart-card__subtitle">Top 15 de {selectedOp}</span>
+              </div>
+              <RankingList data={opRankEsp} color="#1E5FA6" />
+            </div>
+
+            {/* Médicos */}
+            <div className="mt-chart-card">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">👨‍⚕️ Médicos</span>
+                <span className="mt-chart-card__subtitle">Top 15 de {selectedOp}</span>
+              </div>
+              <RankingList data={opRankMedicos} color="#7C3AED" />
+            </div>
+
+            {/* Obras Sociales */}
+            <div className="mt-chart-card">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">🏦 Obras Sociales</span>
+                <span className="mt-chart-card__subtitle">Top 10 de {selectedOp}</span>
+              </div>
+              <PieObrasSociales data={opObrasSociales} />
+            </div>
+
+            {/* Ausentismo */}
+            {opAusentismo && opAusentismo.breakdown.length > 0 && (
+              <div className="mt-chart-card">
+                <div className="mt-chart-card__header">
+                  <span className="mt-chart-card__title">📊 Asistencia</span>
+                  <span className="mt-chart-card__subtitle">{selectedOp} — {opAusentismo.total.toLocaleString()} registros</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0.5rem 0' }}>
+                  {opAusentismo.breakdown.map((item, i) => {
+                    const pct = parseFloat(item.pct);
+                    const color = item.status.toLowerCase().includes('present') ? '#059669' :
+                                 item.status.toLowerCase().includes('ausente') ? '#DC2626' :
+                                 item.status.toLowerCase().includes('cancelad') ? '#D97706' : '#64748B';
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', minWidth: '120px' }}>
+                          {item.status}
+                        </span>
+                        <div style={{ flex: 1, height: 22, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%', width: `${pct}%`,
+                            background: color, borderRadius: 6,
+                            transition: 'width 0.5s ease',
+                            display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                            paddingRight: '6px',
+                          }}>
+                            {pct > 10 && <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#fff' }}>{item.pct}%</span>}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', minWidth: '55px', textAlign: 'right' }}>
+                          {item.count.toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Tendencia Mensual */}
+            <div className="mt-chart-card mt-chart-card--full">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">📈 Tendencia mensual</span>
+                <span className="mt-chart-card__subtitle">{selectedOp}</span>
+              </div>
+              <LineVisitasMes data={opVisitasMes} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
