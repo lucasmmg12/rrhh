@@ -486,9 +486,25 @@ export function getRankingGrupoAgenda(data, topN = 15) {
 //  OPERADORAS — Aggregation Functions
 // ═══════════════════════════════════════════════════════════
 
-// ─── RANKING: Operadoras ───────────────────────────────────
+// ─── RANKING: Operadoras (includes sector) ─────────────────
 export function getRankingOperadoras(data, topN = 15) {
-  return buildRanking(data, 'operadora', topN);
+  const counts = {};
+  data.forEach(d => {
+    if (d.operadora) {
+      if (!counts[d.operadora]) counts[d.operadora] = { total: 0, sector: d.sector_operadora || '' };
+      counts[d.operadora].total++;
+    }
+  });
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, topN)
+    .map(([name, info]) => ({
+      name: name.length > 30 ? name.substring(0, 27) + '...' : name,
+      fullName: name,
+      value: info.total,
+      sector: info.sector,
+    }));
 }
 
 // ─── BREAKDOWN: Sector Operadora ───────────────────────────

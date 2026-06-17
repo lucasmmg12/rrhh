@@ -1081,6 +1081,7 @@ function OperadorasView({ data, rankOperadoras: _rankAll, sectorOperadora: _secA
   const opVisitasMes = useMemo(() => selectedOp ? getVisitasPorMes(filteredData) : [], [filteredData, selectedOp]);
   const opAusentismo = useMemo(() => selectedOp ? getAusentismoStats(filteredData) : null, [filteredData, selectedOp]);
   const opHeatmapHoras = useMemo(() => selectedOp ? getHeatmapHoras(filteredData) : [], [filteredData, selectedOp]);
+  const opRankGrupoAgenda = useMemo(() => selectedOp ? getRankingGrupoAgenda(filteredData) : [], [filteredData, selectedOp]);
 
   // Find selected operadora stats
   const selectedStats = useMemo(() => {
@@ -1213,12 +1214,47 @@ function OperadorasView({ data, rankOperadoras: _rankAll, sectorOperadora: _secA
               No se identificaron operadoras en los datos.
             </p>
           ) : (
-            <ClickableRankingList
-              data={rankOperadoras}
-              color="#D97706"
-              selectedValue={selectedOp}
-              onSelect={(name) => setSelectedOp(prev => prev === name ? null : name)}
-            />
+            <div className="mt-ranking">
+              {rankOperadoras.map((item, i) => {
+                const isSelected = selectedOp === item.fullName;
+                return (
+                  <div
+                    key={i}
+                    className={`mt-ranking__item mt-ranking__item--clickable ${isSelected ? 'mt-ranking__item--selected' : ''}`}
+                    onClick={() => setSelectedOp(prev => prev === item.fullName ? null : item.fullName)}
+                    title={`Click para ${isSelected ? 'quitar filtro' : `filtrar por ${item.fullName}`}`}
+                  >
+                    <div className={`mt-ranking__pos ${getPosClass(i)}`}>
+                      {i === 0 ? '\ud83e\udd47' : i === 1 ? '\ud83e\udd48' : i === 2 ? '\ud83e\udd49' : i + 1}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '0 1 auto' }}>
+                      <span className="mt-ranking__name">{item.name}</span>
+                      {item.sector && (
+                        <span style={{
+                          fontSize: '0.62rem', fontWeight: 600, color: '#fff',
+                          background: SECTOR_COLORS[item.sector] || '#94a3b8',
+                          padding: '1px 7px', borderRadius: 10, alignSelf: 'flex-start',
+                          marginTop: 2,
+                        }}>{item.sector}</span>
+                      )}
+                    </div>
+                    <div className="mt-ranking__bar-wrapper">
+                      <div className="mt-ranking__bar">
+                        <div
+                          className="mt-ranking__bar-fill"
+                          style={{
+                            width: `${(item.value / Math.max(...rankOperadoras.map(d => d.value), 1)) * 100}%`,
+                            backgroundColor: isSelected ? '#D97706' : '#D9770688',
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span className="mt-ranking__value">{item.value.toLocaleString()}</span>
+                    {isSelected && <span style={{ fontSize: '0.7rem', color: '#D97706' }}>✓</span>}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -1463,11 +1499,20 @@ function OperadorasView({ data, rankOperadoras: _rankAll, sectorOperadora: _secA
               </div>
             )}
 
+            {/* Grupo Agenda */}
+            <div className="mt-chart-card">
+              <div className="mt-chart-card__header">
+                <span className="mt-chart-card__title">📋 Agendas</span>
+                <span className="mt-chart-card__subtitle">Dónde recibe más turnos {selectedOp}</span>
+              </div>
+              <RankingList data={opRankGrupoAgenda} color="#059669" />
+            </div>
+
             {/* Tendencia Mensual */}
             <div className="mt-chart-card mt-chart-card--full">
               <div className="mt-chart-card__header">
                 <span className="mt-chart-card__title">📈 Tendencia mensual</span>
-                <span className="mt-chart-card__subtitle">{selectedOp}</span>
+                <span className="mt-chart-card__subtitle">Evolución de turnos de {selectedOp}</span>
               </div>
               <LineVisitasMes data={opVisitasMes} />
             </div>
