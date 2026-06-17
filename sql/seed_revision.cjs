@@ -33,6 +33,61 @@ function excelFractionToHour(fraction) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════
+//  OPERADORAS DICTIONARY (mirror of metricasService.js)
+// ═══════════════════════════════════════════════════════════
+const OPERADORAS = [
+  { apellido: 'atencion', nombre: 'evelyn', friendly: 'Evelyn Atención', sector: 'SECTOR 1' },
+  { apellido: 'aparicio', nombre: 'emilce', friendly: 'Emilce Aparicio', sector: 'SECTOR 1' },
+  { apellido: 'morales', nombre: 'malen', friendly: 'Malen Morales', sector: 'SECTOR 1' },
+  { apellido: 'quintero', nombre: 'julieta', friendly: 'Julieta Quintero', sector: 'SECTOR 2' },
+  { apellido: 'figueroa', nombre: 'erica', friendly: 'Érica Figueroa', sector: 'SECTOR 2' },
+  { apellido: 'vedia', nombre: 'romina', friendly: 'Romina Vedia', sector: 'CITOLOGÍA' },
+  { apellido: 'di virgilio', nombre: 'micaela', friendly: 'Micaela Di Virgilio', sector: 'CITOLOGÍA' },
+  { apellido: 'mesina', nombre: 'carla', friendly: 'Carla Mesina', sector: 'CITOLOGÍA' },
+  { apellido: 'perez', nombre: 'yanina', friendly: 'Yanina Pérez', sector: 'DIAGNÓSTICO' },
+  { apellido: 'diaz', nombre: 'daniela', friendly: 'Daniela Diaz', sector: 'DIAGNÓSTICO' },
+  { apellido: 'gordillo', nombre: 'monica', friendly: 'Monica Gordillo', sector: 'DIAGNÓSTICO' },
+  { apellido: 'espejo', nombre: 'cristina', friendly: 'Cristina Espejo', sector: 'DIAGNÓSTICO' },
+  { apellido: 'ruarte', nombre: 'daiana', friendly: 'Daiana Ruarte', sector: 'DIAGNÓSTICO' },
+];
+
+function removeAccents(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function extractOperadora(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const segments = raw.split('|').filter(Boolean);
+  const segRegex = /^(.+?)\((\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\)/;
+  let bestMatch = null;
+  let bestDate = null;
+  for (const seg of segments) {
+    const m = seg.trim().match(segRegex);
+    if (!m) continue;
+    const rawName = m[1].trim();
+    const [dd, mm, yyyy] = m[2].split('/');
+    const actionDate = new Date(`${yyyy}-${mm}-${dd}T${m[3]}`);
+    if (isNaN(actionDate.getTime())) continue;
+    const commaIdx = rawName.indexOf(',');
+    if (commaIdx === -1) continue;
+    const surnameRaw = removeAccents(rawName.substring(0, commaIdx).trim().toLowerCase());
+    const firstnameRaw = removeAccents(rawName.substring(commaIdx + 1).trim().toLowerCase());
+    for (const op of OPERADORAS) {
+      const surMatch = surnameRaw.startsWith(op.apellido) || surnameRaw.includes(op.apellido);
+      const nameMatch = firstnameRaw.startsWith(op.nombre) || firstnameRaw.includes(op.nombre);
+      if (surMatch && nameMatch) {
+        if (!bestDate || actionDate > bestDate) {
+          bestDate = actionDate;
+          bestMatch = { operadora: op.friendly, sector: op.sector };
+        }
+        break;
+      }
+    }
+  }
+  return bestMatch;
+}
+
 // ─── Main ───
 async function seed() {
   console.log('═══════════════════════════════════════════');
@@ -62,6 +117,7 @@ async function seed() {
   console.log('🔄 Transformando datos...');
   const records = [];
   let skipped = 0;
+  let opFound = 0;
 
   for (const row of rows) {
     const idVisita = row['idVisita'];
@@ -73,6 +129,9 @@ async function seed() {
     }
 
     const horaInfo = excelFractionToHour(row['Hora Visita']);
+    const usuarioCitaRaw = row['Usuario Cita'] || row['UsuarioCita'] || null;
+    const opResult = extractOperadora(usuarioCitaRaw);
+    if (opResult) opFound++;
 
     records.push({
       id_visita: idVisita,
@@ -89,10 +148,14 @@ async function seed() {
       responsable: row['Responsable'] || null,
       tipo_visita: row['Tipo Visita'] || null,
       centro: row['Centro'] || 'SANTA FE',
+      usuario_cita_raw: usuarioCitaRaw,
+      operadora: opResult?.operadora || null,
+      sector_operadora: opResult?.sector || null,
     });
   }
 
-  console.log(`   → ${records.length} registros válidos (${skipped} omitidos)\n`);
+  console.log(`   → ${records.length} registros válidos (${skipped} omitidos)`);
+  console.log(`   → 👩‍💼 ${opFound} registros con operadora identificada (${records.length > 0 ? ((opFound / records.length) * 100).toFixed(1) : 0}%)\n`);
 
   // 4. Upload in batches
   console.log(`📤 Subiendo a Supabase en batches de ${BATCH_SIZE}...`);

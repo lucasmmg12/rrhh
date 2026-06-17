@@ -1,12 +1,101 @@
 /**
  * Métricas Santa Fe — Service Layer
  * Handles Excel parsing, Supabase CRUD, and client-side data aggregation.
+ * Includes operadora extraction from 'Usuario Cita' field.
  */
 import { supabase } from '../supabaseClient';
 import * as XLSX from 'xlsx';
 
 // ─── TABLE NAME ─────────────────────────────────────────────
 const TABLE = 'metricas_visitas_sf';
+
+// ═══════════════════════════════════════════════════════════
+//  OPERADORAS DICTIONARY
+//  Match keys are normalized (no accents, lowercase)
+//  Format in Excel: "APELLIDO, NOMBRE(fecha)<turno>"
+// ═══════════════════════════════════════════════════════════
+const OPERADORAS = [
+  // SECTOR 1
+  { apellido: 'atencion', nombre: 'evelyn', friendly: 'Evelyn Atención', sector: 'SECTOR 1' },
+  { apellido: 'aparicio', nombre: 'emilce', friendly: 'Emilce Aparicio', sector: 'SECTOR 1' },
+  { apellido: 'morales', nombre: 'malen', friendly: 'Malen Morales', sector: 'SECTOR 1' },
+  // SECTOR 2
+  { apellido: 'quintero', nombre: 'julieta', friendly: 'Julieta Quintero', sector: 'SECTOR 2' },
+  { apellido: 'figueroa', nombre: 'erica', friendly: 'Érica Figueroa', sector: 'SECTOR 2' },
+  // CITOLOGÍA
+  { apellido: 'vedia', nombre: 'romina', friendly: 'Romina Vedia', sector: 'CITOLOGÍA' },
+  { apellido: 'di virgilio', nombre: 'micaela', friendly: 'Micaela Di Virgilio', sector: 'CITOLOGÍA' },
+  { apellido: 'mesina', nombre: 'carla', friendly: 'Carla Mesina', sector: 'CITOLOGÍA' },
+  // DIAGNÓSTICO
+  { apellido: 'perez', nombre: 'yanina', friendly: 'Yanina Pérez', sector: 'DIAGNÓSTICO' },
+  { apellido: 'diaz', nombre: 'daniela', friendly: 'Daniela Diaz', sector: 'DIAGNÓSTICO' },
+  { apellido: 'gordillo', nombre: 'monica', friendly: 'Monica Gordillo', sector: 'DIAGNÓSTICO' },
+  { apellido: 'espejo', nombre: 'cristina', friendly: 'Cristina Espejo', sector: 'DIAGNÓSTICO' },
+  { apellido: 'ruarte', nombre: 'daiana', friendly: 'Daiana Ruarte', sector: 'DIAGNÓSTICO' },
+];
+
+/** Remove diacritics/accents from a string */
+function removeAccents(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Parse the 'Usuario Cita' field and extract the operadora who took the appointment.
+ * Format: "APELLIDO, NOMBRE(DD/MM/YYYY HH:MM:SS)<...>|NEXT..."
+ * Logic: find the most recent entry (by action date) that matches a known operadora.
+ * @param {string} raw - The raw 'Usuario Cita' string
+ * @returns {{ operadora: string, sector: string } | null}
+ */
+export function extractOperadora(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+
+  const segments = raw.split('|').filter(Boolean);
+  // Regex: captures NAME and DATE from "NAME(DD/MM/YYYY HH:MM:SS)"
+  const segRegex = /^(.+?)\((\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\)/;
+
+  let bestMatch = null;
+  let bestDate = null;
+
+  for (const seg of segments) {
+    const m = seg.trim().match(segRegex);
+    if (!m) continue;
+
+    const rawName = m[1].trim();
+    const dateStr = m[2]; // DD/MM/YYYY
+    const timeStr = m[3]; // HH:MM:SS
+
+    // Parse date: DD/MM/YYYY HH:MM:SS → Date
+    const [dd, mm, yyyy] = dateStr.split('/');
+    const actionDate = new Date(`${yyyy}-${mm}-${dd}T${timeStr}`);
+    if (isNaN(actionDate.getTime())) continue;
+
+    // Normalize: "FIGUEROA HERRERA, ERICA NILDA" → { surname: "figueroa herrera", firstname: "erica nilda" }
+    const commaIdx = rawName.indexOf(',');
+    if (commaIdx === -1) continue;
+
+    const surnameRaw = removeAccents(rawName.substring(0, commaIdx).trim().toLowerCase());
+    const firstnameRaw = removeAccents(rawName.substring(commaIdx + 1).trim().toLowerCase());
+
+    // Match against dictionary
+    for (const op of OPERADORAS) {
+      const surMatch = surnameRaw.startsWith(op.apellido) || surnameRaw.includes(op.apellido);
+      const nameMatch = firstnameRaw.startsWith(op.nombre) || firstnameRaw.includes(op.nombre);
+
+      if (surMatch && nameMatch) {
+        if (!bestDate || actionDate > bestDate) {
+          bestDate = actionDate;
+          bestMatch = { operadora: op.friendly, sector: op.sector };
+        }
+        break; // found match for this segment, move to next
+      }
+    }
+  }
+
+  return bestMatch;
+}
+
+/** Exportar diccionario para uso externo (UI sector colors, etc.) */
+export { OPERADORAS };
 
 // ─── EXCEL SERIAL → JS DATE ────────────────────────────────
 function excelSerialToDate(serial) {
@@ -41,6 +130,10 @@ export function parseRevisionXlsx(file) {
           const fechaDate = excelSerialToDate(row['Fecha Visita']);
           const horaInfo = excelFractionToHour(row['Hora Visita']);
 
+          // Extract operadora from 'Usuario Cita' field
+          const usuarioCitaRaw = row['Usuario Cita'] || row['UsuarioCita'] || null;
+          const opResult = extractOperadora(usuarioCitaRaw);
+
           return {
             id_visita: row['idVisita'],
             fecha_visita: fechaDate ? fechaDate.toISOString().slice(0, 10) : null,
@@ -56,6 +149,9 @@ export function parseRevisionXlsx(file) {
             responsable: row['Responsable'] || null,
             tipo_visita: row['Tipo Visita'] || null,
             centro: row['Centro'] || 'SANTA FE',
+            usuario_cita_raw: usuarioCitaRaw,
+            operadora: opResult?.operadora || null,
+            sector_operadora: opResult?.sector || null,
           };
         }).filter(r => r.id_visita && r.fecha_visita);
 
@@ -98,7 +194,7 @@ export async function fetchVisitasSF() {
   while (true) {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, paciente, grupo_agenda, especialidad, cliente, responsable, tipo_visita')
+      .select('id_visita, fecha_visita, mes, hora_numero, dia_semana, asistencia, paciente, grupo_agenda, especialidad, cliente, responsable, tipo_visita, operadora, sector_operadora')
       .range(from, from + PAGE - 1);
 
     if (error) throw new Error(error.message);
@@ -358,4 +454,86 @@ export function getPacientesRecurrentes(data, topN = 15) {
 // ─── GRUPO AGENDA ──────────────────────────────────────────
 export function getRankingGrupoAgenda(data, topN = 15) {
   return buildRanking(data, 'grupo_agenda', topN);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  OPERADORAS — Aggregation Functions
+// ═══════════════════════════════════════════════════════════
+
+// ─── RANKING: Operadoras ───────────────────────────────────
+export function getRankingOperadoras(data, topN = 15) {
+  return buildRanking(data, 'operadora', topN);
+}
+
+// ─── BREAKDOWN: Sector Operadora ───────────────────────────
+export function getBreakdownSectorOperadora(data) {
+  const counts = {};
+  data.forEach(d => {
+    if (d.sector_operadora) {
+      counts[d.sector_operadora] = (counts[d.sector_operadora] || 0) + 1;
+    }
+  });
+
+  const SECTOR_COLORS = {
+    'SECTOR 1': '#1E5FA6',
+    'SECTOR 2': '#0891B2',
+    'CITOLOGÍA': '#7C3AED',
+    'DIAGNÓSTICO': '#D97706',
+  };
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value]) => ({
+      name,
+      fullName: name,
+      value,
+      color: SECTOR_COLORS[name] || '#94A3B8',
+    }));
+}
+
+// ─── OPERADORAS POR HORA ───────────────────────────────────
+export function getOperadorasPorHora(data) {
+  const byOp = {};
+  data.forEach(d => {
+    if (d.operadora && d.hora_numero != null && d.hora_numero >= 0 && d.hora_numero < 24) {
+      if (!byOp[d.operadora]) byOp[d.operadora] = new Array(24).fill(0);
+      byOp[d.operadora][d.hora_numero]++;
+    }
+  });
+  return byOp;
+}
+
+// ─── OPERADORAS: Estadísticas detalladas ───────────────────
+export function getOperadorasStats(data) {
+  const stats = {};
+  data.forEach(d => {
+    if (!d.operadora) return;
+    if (!stats[d.operadora]) {
+      stats[d.operadora] = { total: 0, sector: d.sector_operadora, dias: new Set() };
+    }
+    stats[d.operadora].total++;
+    if (d.fecha_visita) stats[d.operadora].dias.add(d.fecha_visita);
+  });
+
+  return Object.entries(stats)
+    .map(([name, s]) => ({
+      name,
+      sector: s.sector,
+      total: s.total,
+      diasActivos: s.dias.size,
+      promedioDiario: s.dias.size > 0 ? (s.total / s.dias.size).toFixed(1) : '0',
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// ─── Tasa de identificación de operadora ───────────────────
+export function getOperadoraCoverage(data) {
+  const total = data.length;
+  const conOperadora = data.filter(d => d.operadora).length;
+  return {
+    total,
+    conOperadora,
+    sinOperadora: total - conOperadora,
+    pctIdentificado: total > 0 ? ((conOperadora / total) * 100).toFixed(1) : '0',
+  };
 }

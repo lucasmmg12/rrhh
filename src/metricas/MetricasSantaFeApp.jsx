@@ -20,6 +20,10 @@ import {
   getAusentismoStats,
   getPacientesRecurrentes,
   getRankingGrupoAgenda,
+  getRankingOperadoras,
+  getBreakdownSectorOperadora,
+  getOperadorasStats,
+  getOperadoraCoverage,
 } from './metricasService';
 import './metricas.css';
 
@@ -131,6 +135,10 @@ export default function MetricasSantaFeApp({ embedded = false }) {
   const ausentismo = useMemo(() => getAusentismoStats(data), [data]);
   const pacientesRec = useMemo(() => getPacientesRecurrentes(data), [data]);
   const rankGrupoAgenda = useMemo(() => getRankingGrupoAgenda(data), [data]);
+  const rankOperadoras = useMemo(() => getRankingOperadoras(data), [data]);
+  const sectorOperadora = useMemo(() => getBreakdownSectorOperadora(data), [data]);
+  const operadorasStats = useMemo(() => getOperadorasStats(data), [data]);
+  const operadoraCoverage = useMemo(() => getOperadoraCoverage(data), [data]);
 
   // ─── Computed: filtered data (for Resumen cross-filter)
   const resHeatmapDias = useMemo(() => getHeatmapDias(filteredData), [filteredData]);
@@ -146,6 +154,7 @@ export default function MetricasSantaFeApp({ embedded = false }) {
       especialidades: new Set(src.map(d => d.especialidad).filter(Boolean)).size,
       medicos: new Set(src.map(d => d.responsable).filter(Boolean)).size,
       obrasSociales: new Set(src.map(d => d.cliente).filter(c => c && /^\d/.test(c.trim()))).size,
+      operadoras: new Set(src.map(d => d.operadora).filter(Boolean)).size,
     };
   }, [filteredData]);
 
@@ -267,6 +276,7 @@ export default function MetricasSantaFeApp({ embedded = false }) {
               { id: 'resumen', icon: '📊', label: 'Resumen' },
               { id: 'heatmaps', icon: '🔥', label: 'Mapas de Calor' },
               { id: 'rankings', icon: '🏆', label: 'Rankings' },
+              { id: 'operadoras', icon: '👩‍💼', label: 'Operadoras' },
               { id: 'ausentismo', icon: '🚫', label: 'Ausentismo' },
               { id: 'avanzado', icon: '🔬', label: 'Análisis Avanzado' },
               { id: 'tendencias', icon: '📈', label: 'Tendencias' },
@@ -288,6 +298,7 @@ export default function MetricasSantaFeApp({ embedded = false }) {
             <KpiCard icon="🏥" label="Especialidades" value={kpis.especialidades} color="#059669" bg="#dcfce7" />
             <KpiCard icon="👨‍⚕️" label="Médicos" value={kpis.medicos} color="#7C3AED" bg="#ede9fe" />
             <KpiCard icon="🏦" label="Obras Sociales" value={kpis.obrasSociales} color="#0891B2" bg="#cffafe" />
+            <KpiCard icon="👩‍💼" label="Operadoras" value={kpis.operadoras} color="#D97706" bg="#fef3c7" />
           </div>
 
           {activeTab === 'resumen' && (
@@ -310,6 +321,14 @@ export default function MetricasSantaFeApp({ embedded = false }) {
               rankMedicos={rankMedicos}
               rankTipoVisita={rankTipoVisita}
               rankGrupoAgenda={rankGrupoAgenda}
+            />
+          )}
+          {activeTab === 'operadoras' && (
+            <OperadorasView
+              rankOperadoras={rankOperadoras}
+              sectorOperadora={sectorOperadora}
+              operadorasStats={operadorasStats}
+              coverage={operadoraCoverage}
             />
           )}
           {activeTab === 'ausentismo' && (
@@ -1003,6 +1022,220 @@ function HeatmapMatrixDiaHora({ data }) {
           }} />
         ))}
         <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Más</span>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  OPERADORAS VIEW
+// ═══════════════════════════════════════════════════════════
+function OperadorasView({ rankOperadoras, sectorOperadora, operadorasStats, coverage }) {
+  const SECTOR_COLORS = {
+    'SECTOR 1': '#1E5FA6',
+    'SECTOR 2': '#0891B2',
+    'CITOLOGÍA': '#7C3AED',
+    'DIAGNÓSTICO': '#D97706',
+  };
+
+  const totalSectores = sectorOperadora.reduce((sum, s) => sum + s.value, 0);
+
+  return (
+    <div style={{ animation: 'mtFadeIn 0.3s ease-out' }}>
+      {/* Coverage Banner */}
+      <div style={{
+        padding: '1rem 1.25rem', borderRadius: 12, marginBottom: '1.25rem',
+        background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+        border: '1px solid #fcd34d',
+        display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap',
+      }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: '50%', background: '#D97706',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1.4rem', color: '#fff', flexShrink: 0,
+        }}>👩‍💼</div>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#92400e' }}>
+            Tasa de Identificación de Operadora
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#78350f', marginTop: 2 }}>
+            {coverage.conOperadora.toLocaleString()} de {coverage.total.toLocaleString()} turnos tienen operadora identificada
+          </div>
+        </div>
+        <div style={{
+          fontSize: '1.6rem', fontWeight: 800, color: '#92400e',
+          background: '#fff', borderRadius: 10, padding: '0.4rem 1rem',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+        }}>
+          {coverage.pctIdentificado}%
+        </div>
+      </div>
+
+      <div className="mt-chart-grid">
+        {/* Ranking Operadoras */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">🏆 Ranking de Operadoras</span>
+            <span className="mt-chart-card__subtitle">Por cantidad de turnos asignados</span>
+          </div>
+          <ChartHelp
+            text="Ranking de las operadoras que tomaron turnos, ordenado por volumen total. Se identifica automáticamente desde el campo 'Usuario Cita' del sistema, buscando la última acción realizada por una operadora conocida."
+            tips={[
+              'Las primeras 3 posiciones tienen medallas (🥇🥈🥉)',
+              'Una distribución muy desigual puede indicar sobrecarga en ciertas operadoras',
+              'Compará con los días activos para evaluar la eficiencia real',
+            ]}
+          />
+          {rankOperadoras.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>
+              No se identificaron operadoras en los datos. Verificá que el campo "Usuario Cita" esté presente en el Excel.
+            </p>
+          ) : (
+            <RankingList data={rankOperadoras} color="#D97706" />
+          )}
+        </div>
+
+        {/* Sector Breakdown Pie */}
+        <div className="mt-chart-card">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">📊 Distribución por Sector</span>
+            <span className="mt-chart-card__subtitle">{totalSectores.toLocaleString()} turnos identificados</span>
+          </div>
+          <ChartHelp
+            text="Distribución porcentual de los turnos asignados según el sector de la operadora: Sector 1, Sector 2, Citología o Diagnóstico."
+            tips={[
+              'Cada sector tiene un color fijo para facilitar la comparación',
+              'Sectores con mayor volumen pueden necesitar más personal',
+              'Pasá el mouse sobre cada sector para ver el detalle',
+            ]}
+          />
+          {sectorOperadora.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>Sin datos de sector</p>
+          ) : (
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={sectorOperadora}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={100}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {sectorOperadora.map((entry, i) => (
+                      <Cell key={i} fill={SECTOR_COLORS[entry.name] || '#94A3B8'} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 10,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                      fontSize: '0.78rem',
+                    }}
+                    formatter={(value, name) => [
+                      `${value.toLocaleString()} (${((value / totalSectores) * 100).toFixed(1)}%)`,
+                      name,
+                    ]}
+                  />
+                  <Legend
+                    layout="vertical"
+                    verticalAlign="middle"
+                    align="right"
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: '0.75rem', lineHeight: '1.8' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Stats Table */}
+        <div className="mt-chart-card mt-chart-card--full">
+          <div className="mt-chart-card__header">
+            <span className="mt-chart-card__title">📋 Estadísticas Detalladas por Operadora</span>
+            <span className="mt-chart-card__subtitle">Productividad y días activos</span>
+          </div>
+          <ChartHelp
+            text="Tabla con métricas clave de cada operadora: total de turnos tomados, sector al que pertenece, cantidad de días en los que estuvo activa, y el promedio de turnos por día activo."
+            tips={[
+              'El promedio diario indica la productividad real: turnos tomados / días trabajados',
+              'Un promedio muy alto puede indicar sobrecarga; muy bajo puede ser ineficiencia o pocos días de trabajo',
+              'Los colores de sector permiten comparar rápidamente entre equipos',
+            ]}
+          />
+          {operadorasStats.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.82rem', textAlign: 'center', padding: '2rem' }}>Sin datos de operadoras</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{
+                width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px',
+                fontSize: '0.82rem',
+              }}>
+                <thead>
+                  <tr style={{ color: '#64748b', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px' }}>#</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px' }}>Operadora</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px' }}>Sector</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px' }}>Turnos</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px' }}>Días Activos</th>
+                    <th style={{ textAlign: 'right', padding: '8px 12px' }}>Prom. Diario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {operadorasStats.map((op, i) => (
+                    <tr key={i} style={{
+                      background: i % 2 === 0 ? '#f8fafc' : '#ffffff',
+                      borderRadius: 8,
+                    }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#94a3b8' }}>
+                        {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>
+                        {op.name}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '3px 10px',
+                          borderRadius: 20,
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: '#fff',
+                          background: SECTOR_COLORS[op.sector] || '#94a3b8',
+                        }}>
+                          {op.sector}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
+                        {op.total.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>
+                        {op.diasActivos}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                        <span style={{
+                          fontWeight: 700,
+                          color: parseFloat(op.promedioDiario) > 30 ? '#DC2626' :
+                                 parseFloat(op.promedioDiario) > 15 ? '#D97706' : '#059669',
+                        }}>
+                          {op.promedioDiario}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: 4 }}>t/día</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
