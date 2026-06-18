@@ -55,14 +55,7 @@ function SuccessCheckIcon() {
   );
 }
 
-function MailIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-      <polyline points="22,6 12,13 2,6" />
-    </svg>
-  );
-}
+
 
 
 // ── Main Component ──
@@ -70,6 +63,7 @@ export default function PrestadoresFormApp() {
   const [formData, setFormData] = useState({
     nombre: '',
     especialidad: '',
+    matricula: '',
     sedes: [],
     comentarios: '',
   });
@@ -168,6 +162,7 @@ export default function PrestadoresFormApp() {
     const errs = {};
     if (!formData.nombre.trim()) errs.nombre = 'Ingresá tu nombre completo.';
     if (!formData.especialidad.trim()) errs.especialidad = 'Ingresá tu servicio o especialidad.';
+    if (!formData.matricula.trim()) errs.matricula = 'Ingresá tu número de matrícula.';
     if (formData.sedes.length === 0) errs.sedes = 'Seleccioná al menos una sede.';
     if (!foto) errs.foto = 'Cargá una imagen.';
     setErrors(errs);
@@ -211,6 +206,7 @@ export default function PrestadoresFormApp() {
         .insert({
           nombre_completo: formData.nombre.trim(),
           servicio_especialidad: formData.especialidad.trim(),
+          matricula: formData.matricula.trim(),
           sedes: formData.sedes,
           foto_url: fotoUrl,
           comentarios: formData.comentarios.trim() || null,
@@ -229,7 +225,7 @@ export default function PrestadoresFormApp() {
 
   // ── Reset ──
   const handleReset = () => {
-    setFormData({ nombre: '', especialidad: '', sedes: [], comentarios: '' });
+    setFormData({ nombre: '', especialidad: '', matricula: '', sedes: [], comentarios: '' });
     setFoto(null);
     setFotoPreview(null);
     setErrors({});
@@ -306,10 +302,6 @@ export default function PrestadoresFormApp() {
             Sanatorio Argentino realice la correcta difusión de su incorporación a la Institución.
           </p>
 
-          <div className="prestadores-header__contact">
-            <MailIcon />
-            comunicacion@sanatorioargentino.com.ar
-          </div>
         </div>
 
         {/* ── Body ── */}
@@ -362,8 +354,24 @@ export default function PrestadoresFormApp() {
               {errors.especialidad && <span className="prestadores-field__error">{errors.especialidad}</span>}
             </div>
 
-            {/* Sedes */}
+            {/* Matrícula */}
             <div className="prestadores-field" style={{ animationDelay: '0.3s' }}>
+              <label className="prestadores-field__label" htmlFor="pf-matricula">
+                Matrícula profesional <span className="prestadores-field__required">*</span>
+              </label>
+              <input
+                id="pf-matricula"
+                type="text"
+                className={`prestadores-field__input ${errors.matricula ? 'prestadores-field__input--error' : ''}`}
+                placeholder="Ej: MP 12345"
+                value={formData.matricula}
+                onChange={e => handleInputChange('matricula', e.target.value)}
+              />
+              {errors.matricula && <span className="prestadores-field__error">{errors.matricula}</span>}
+            </div>
+
+            {/* Sedes */}
+            <div className="prestadores-field" style={{ animationDelay: '0.4s' }}>
               <label className="prestadores-field__label">
                 Sede en la que atenderá <span className="prestadores-field__required">*</span>
               </label>

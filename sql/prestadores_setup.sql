@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS nuevos_prestadores (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nombre_completo TEXT NOT NULL,
     servicio_especialidad TEXT NOT NULL,
+    matricula TEXT,                        -- Matrícula profesional
     sedes TEXT[] NOT NULL,                -- Array de sedes seleccionadas (checkboxes)
     foto_url TEXT,                         -- URL pública de la foto en Storage
     comentarios TEXT,                      -- Preguntas y/o comentarios (opcional)
