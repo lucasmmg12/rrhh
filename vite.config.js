@@ -9,6 +9,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        prestadores: resolve(__dirname, 'prestadores.html'),
         organigrama: resolve(__dirname, 'organigrama.html'),
         calendario: resolve(__dirname, 'calendario.html'),
         agenda: resolve(__dirname, 'agenda.html'),
