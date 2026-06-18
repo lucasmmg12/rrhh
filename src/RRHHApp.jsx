@@ -9,6 +9,7 @@ const AuditoriaApp = lazy(() => import('./auditoria/AuditoriaApp.jsx'));
 const EfemeridesApp = lazy(() => import('./efemerides/EfemeridesApp.jsx'));
 const ControlHorarioApp = lazy(() => import('./controlhorario/ControlHorarioApp.jsx'));
 const MetricasSantaFeApp = lazy(() => import('./metricas/MetricasSantaFeApp.jsx'));
+const PrestadoresListApp = lazy(() => import('./prestadores/PrestadoresListApp.jsx'));
 
 // Loading spinner
 function LoadingSpinner({ label = 'Cargando módulo...' }) {
@@ -90,6 +91,14 @@ function HomePanel() {
       icon: '📊',
       color: '#7C3AED',
       bg: '#EDE9FE',
+    },
+    {
+      id: 'prestadores',
+      title: 'Prestadores',
+      description: 'Registro y difusión de nuevos prestadores',
+      icon: '🩺',
+      color: '#0D9488',
+      bg: '#CCFBF1',
     },
   ];
 
@@ -220,6 +229,7 @@ export default function RRHHApp() {
     auditoria: 'Seguimiento y Acompañamiento de Sede',
     efemerides: 'Efemérides',
     'ayuda-ch': 'Ayuda — Control Horario',
+    prestadores: 'Prestadores',
     config: 'Configuración',
   };
 
@@ -318,6 +328,12 @@ export default function RRHHApp() {
           {activeView === 'metricas-sf' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <MetricasSantaFeApp embedded />
+            </div>
+          )}
+
+          {activeView === 'prestadores' && (
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <PrestadoresListApp />
             </div>
           )}
         </Suspense>
