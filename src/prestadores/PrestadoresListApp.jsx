@@ -51,6 +51,7 @@ export default function PrestadoresListApp() {
   const [search, setSearch] = useState('');
   const [sedeFilter, setSedeFilter] = useState('');
   const [editingPrestador, setEditingPrestador] = useState(null);
+  const [deletingPrestador, setDeletingPrestador] = useState(null);
 
   // ── Fetch data ──
   useEffect(() => {
@@ -73,13 +74,18 @@ export default function PrestadoresListApp() {
   }, []);
 
   // ── Actions ──
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Estás seguro de eliminar este prestador?')) return;
-    const { error } = await supabase.from('nuevos_prestadores').delete().eq('id', id);
+  const handleDeleteClick = (prestador) => {
+    setDeletingPrestador(prestador);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingPrestador) return;
+    const { error } = await supabase.from('nuevos_prestadores').delete().eq('id', deletingPrestador.id);
     if (error) {
       alert('Error al eliminar: ' + error.message);
     } else {
-      setPrestadores(prev => prev.filter(p => p.id !== id));
+      setPrestadores(prev => prev.filter(p => p.id !== deletingPrestador.id));
+      setDeletingPrestador(null);
     }
   };
 
@@ -267,7 +273,7 @@ export default function PrestadoresListApp() {
                 <button
                   className="prestadores-list__action-btn prestadores-list__action-btn--delete"
                   title="Eliminar"
-                  onClick={() => handleDelete(p.id)}
+                  onClick={() => handleDeleteClick(p)}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
@@ -346,6 +352,23 @@ export default function PrestadoresListApp() {
                 <button type="submit" className="prestadores-list__modal-save">Guardar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {deletingPrestador && (
+        <div className="prestadores-list__modal-overlay">
+          <div className="prestadores-list__modal" style={{ maxWidth: '400px', textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🗑️</div>
+            <h3 className="prestadores-list__modal-title" style={{ marginBottom: '0.5rem' }}>Eliminar Prestador</h3>
+            <p style={{ color: 'var(--neutral-500)', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+              ¿Estás seguro de que quieres eliminar a <strong>{deletingPrestador.nombre_completo}</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="prestadores-list__modal-actions" style={{ justifyContent: 'center' }}>
+              <button type="button" onClick={() => setDeletingPrestador(null)}>Cancelar</button>
+              <button type="button" onClick={confirmDelete} className="prestadores-list__modal-delete">Sí, eliminar</button>
+            </div>
           </div>
         </div>
       )}

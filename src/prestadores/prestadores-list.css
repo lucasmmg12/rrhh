@@ -505,6 +505,16 @@
   transform: translateY(-1px);
 }
 
+.prestadores-list__modal-delete {
+  background: #DC2626;
+  color: white;
+}
+
+.prestadores-list__modal-delete:hover {
+  background: #B91C1C;
+  transform: translateY(-1px);
+}
+
 @keyframes plist-modal-in {
   from { opacity: 0; }
   to { opacity: 1; }
