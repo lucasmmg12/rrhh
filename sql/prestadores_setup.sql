@@ -27,20 +27,20 @@ CREATE POLICY "Inserción pública de prestadores"
     ON nuevos_prestadores FOR INSERT
     WITH CHECK (true);
 
--- SELECT solo para usuarios autenticados (staff de RRHH)
-CREATE POLICY "Lectura autenticada de prestadores"
+-- SELECT público
+CREATE POLICY "Lectura pública de prestadores"
     ON nuevos_prestadores FOR SELECT
-    USING (auth.role() = 'authenticated');
+    USING (true);
 
--- UPDATE solo para usuarios autenticados
-CREATE POLICY "Actualización autenticada de prestadores"
+-- UPDATE público
+CREATE POLICY "Actualización pública de prestadores"
     ON nuevos_prestadores FOR UPDATE
-    USING (auth.role() = 'authenticated');
+    USING (true);
 
--- DELETE solo para usuarios autenticados
-CREATE POLICY "Eliminación autenticada de prestadores"
+-- DELETE público
+CREATE POLICY "Eliminación pública de prestadores"
     ON nuevos_prestadores FOR DELETE
-    USING (auth.role() = 'authenticated');
+    USING (true);
 
 -- ============================================================
 -- 4. Storage Bucket para fotos de prestadores
