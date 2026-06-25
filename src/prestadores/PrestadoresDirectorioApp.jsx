@@ -186,8 +186,8 @@ export default function PrestadoresDirectorioApp() {
   return (
     <div className="directorio-app">
       <header className="directorio-header">
+        <img src="/logosanatorio.png" alt="Sanatorio Argentino" className="directorio-logo" />
         <h1>Directorio Médico</h1>
-        <p>Sanatorio Argentino</p>
       </header>
 
       <div className="directorio-search-container">
