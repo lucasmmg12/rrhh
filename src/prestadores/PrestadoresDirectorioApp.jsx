@@ -49,7 +49,15 @@ const PrestadorCard = ({ prestador }) => {
     <div className="prestador-card">
       <div className="prestador-card-header">
         <div className="prestador-avatar">
-          {getInitials(prestador.nombre_completo)}
+          {prestador.foto_url ? (
+            <img 
+              src={prestador.foto_url} 
+              alt={`Foto de ${prestador.nombre_completo}`}
+              className="prestador-foto"
+            />
+          ) : (
+            getInitials(prestador.nombre_completo)
+          )}
         </div>
         <div className="prestador-info">
           <h4 className="prestador-name">{prestador.nombre_completo}</h4>
