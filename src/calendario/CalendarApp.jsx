@@ -91,6 +91,7 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [modalState, setModalState] = useState(null);
+  const [dayEventsModal, setDayEventsModal] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [allContacts, setAllContacts] = useState([]);
 
@@ -106,7 +107,7 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
       if (view === 'month') {
         startRange = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1).toISOString();
         endRange = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0).toISOString();
-      } else {
+      } else if (view === 'week') {
         const weekDays = getWeekDays(currentDate);
         const weekStart = new Date(weekDays[0]);
         weekStart.setHours(0, 0, 0, 0);
@@ -114,6 +115,13 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
         const weekEnd = new Date(weekDays[6]);
         weekEnd.setHours(23, 59, 59, 999);
         endRange = weekEnd.toISOString();
+      } else if (view === 'day') {
+        const dayStart = new Date(currentDate);
+        dayStart.setHours(0, 0, 0, 0);
+        startRange = dayStart.toISOString();
+        const dayEnd = new Date(currentDate);
+        dayEnd.setHours(23, 59, 59, 999);
+        endRange = dayEnd.toISOString();
       }
       const data = await calendarService.getEvents(startRange, endRange);
       setEvents(data);
@@ -158,13 +166,15 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
   const goPrev = () => {
     const d = new Date(currentDate);
     if (view === 'month') d.setMonth(d.getMonth() - 1);
-    else d.setDate(d.getDate() - 7);
+    else if (view === 'week') d.setDate(d.getDate() - 7);
+    else if (view === 'day') d.setDate(d.getDate() - 1);
     setCurrentDate(d);
   };
   const goNext = () => {
     const d = new Date(currentDate);
     if (view === 'month') d.setMonth(d.getMonth() + 1);
-    else d.setDate(d.getDate() + 7);
+    else if (view === 'week') d.setDate(d.getDate() + 7);
+    else if (view === 'day') d.setDate(d.getDate() + 1);
     setCurrentDate(d);
   };
 
@@ -264,6 +274,9 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
     if (view === 'month') {
       return `${MONTHS_ES[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
     }
+    if (view === 'day') {
+      return `${DAYS_FULL[currentDate.getDay()]}, ${currentDate.getDate()} de ${MONTHS_ES[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+    }
     const weekDays = getWeekDays(currentDate);
     const s = weekDays[0]; const e = weekDays[6];
     if (s.getMonth() === e.getMonth()) {
@@ -325,6 +338,7 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
             <div className="cal-view-toggle">
               <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Mes</button>
               <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Semana</button>
+              <button className={view === 'day' ? 'active' : ''} onClick={() => setView('day')}>Día</button>
             </div>
             {isAdmin && (
               <button className="cal-export-btn" onClick={() => setShowContactsPanel(true)} style={{ background: '#10b981', borderColor: '#10b981' }}>
@@ -359,6 +373,7 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
             <div className="cal-view-toggle">
               <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Mes</button>
               <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Semana</button>
+              <button className={view === 'day' ? 'active' : ''} onClick={() => setView('day')}>Día</button>
             </div>
             <a href="/agenda.html" target="_blank" rel="noopener noreferrer"
               className="cal-export-btn"
@@ -391,16 +406,42 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
             events={events}
             onDayClick={(date) => isAdmin && setModalState({ mode: 'create', date })}
             onEventClick={(event) => setModalState({ mode: 'view', event })}
+            onShowDayEvents={(date, dayEvents, holidayEvent) => setDayEventsModal({ date, events: dayEvents, holidayEvent })}
           />
-        ) : (
+        ) : view === 'week' ? (
           <WeekView
             currentDate={currentDate}
             events={events}
             onSlotClick={(date) => isAdmin && setModalState({ mode: 'create', date })}
             onEventClick={(event) => setModalState({ mode: 'view', event })}
           />
+        ) : (
+          <DayView
+            currentDate={currentDate}
+            events={events}
+            onSlotClick={(date) => isAdmin && setModalState({ mode: 'create', date })}
+            onEventClick={(event) => setModalState({ mode: 'view', event })}
+            onDayClick={(date) => isAdmin && setModalState({ mode: 'create', date })}
+            isAdmin={isAdmin}
+          />
         )}
       </div>
+
+      {/* DAY EVENTS MODAL / BOTTOM SHEET */}
+      {dayEventsModal && (
+        <DayEventsModal
+          data={dayEventsModal}
+          onClose={() => setDayEventsModal(null)}
+          onEventClick={(ev) => setModalState({ mode: 'view', event: ev })}
+          onNewEvent={(date) => setModalState({ mode: 'create', date })}
+          onViewDay={(date) => {
+            setCurrentDate(date);
+            setView('day');
+            setDayEventsModal(null);
+          }}
+          isAdmin={isAdmin}
+        />
+      )}
 
       {/* EVENT MODAL */}
       {modalState && (
@@ -428,7 +469,7 @@ export default function CalendarApp({ isReadonly = false, embedded = false }) {
 }
 
 // ===== MONTH VIEW COMPONENT =====
-function MonthView({ currentDate, events, onDayClick, onEventClick }) {
+function MonthView({ currentDate, events, onDayClick, onEventClick, onShowDayEvents }) {
   const days = getMonthDays(currentDate.getFullYear(), currentDate.getMonth());
   const today = new Date();
 
@@ -458,14 +499,43 @@ function MonthView({ currentDate, events, onDayClick, onEventClick }) {
             key={i}
             className={`cal-day-cell ${!day.isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${isBlocked ? 'blocked' : ''}`}
             onClick={(e) => {
-              if (isBlocked) return; // Prevent creating events on holidays
-              if (!e.target.closest('.cal-event-pill')) {
+              if (isBlocked) {
+                if (onShowDayEvents) {
+                  onShowDayEvents(day.date, nonHolidayEvents, holidayEvent);
+                }
+                return;
+              }
+              if (e.target.closest('.cal-event-pill')) return;
+              
+              // On mobile, or if day has multiple events, open the day events list
+              if (nonHolidayEvents.length > 0 || window.innerWidth <= 768) {
+                if (onShowDayEvents) {
+                  onShowDayEvents(day.date, nonHolidayEvents, holidayEvent);
+                }
+              } else {
                 onDayClick(day.date);
               }
             }}
-            style={isBlocked ? { cursor: 'not-allowed' } : {}}
+            style={isBlocked ? { cursor: 'pointer' } : {}}
           >
-            <div className="cal-day-number">{day.date.getDate()}</div>
+            <div className="cal-day-number-row">
+              <span className="cal-day-number">{day.date.getDate()}</span>
+              {nonHolidayEvents.length > 0 && (
+                <span
+                  className="cal-day-count-badge"
+                  title={`${nonHolidayEvents.length} eventos. Toca para ver todos.`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onShowDayEvents) {
+                      onShowDayEvents(day.date, nonHolidayEvents, holidayEvent);
+                    }
+                  }}
+                >
+                  {nonHolidayEvents.length}
+                </span>
+              )}
+            </div>
+
             {isBlocked && (
               <div className="cal-blocked-overlay">
                 <span className="cal-blocked-icon">🚫</span>
@@ -483,12 +553,23 @@ function MonthView({ currentDate, events, onDayClick, onEventClick }) {
                 title={`${ev.title} — ${formatTime(ev.start_time)}${isCancelled ? ' (CANCELADO)' : ''}`}
               >
                 <span className="pill-time">{formatTime(ev.start_time)}</span>
-                <span>{isCancelled ? '🚫 ' : ''}{ev.requires_coffee && '☕ '}{ev.requires_tys && '🖥️ '}{ev.title}</span>
+                <span className="pill-title">{isCancelled ? '🚫 ' : ''}{ev.requires_coffee && '☕ '}{ev.requires_tys && '🖥️ '}{ev.title}</span>
               </div>
               );
             })}
             {!isBlocked && nonHolidayEvents.length > maxVisible && (
-              <div className="cal-more-events" onClick={(e) => { e.stopPropagation(); }}>
+              <div
+                className="cal-more-events"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onShowDayEvents) {
+                    onShowDayEvents(day.date, nonHolidayEvents, holidayEvent);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                title="Toca para ver todos los eventos de este día"
+              >
                 +{nonHolidayEvents.length - maxVisible} más
               </div>
             )}
@@ -603,6 +684,235 @@ function WeekView({ currentDate, events, onSlotClick, onEventClick }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ===== DAY VIEW COMPONENT =====
+function DayView({ currentDate, events, onSlotClick, onEventClick, onDayClick, isAdmin }) {
+  const dateStr = toLocalDateString(currentDate);
+  const dayEvents = events.filter(ev => {
+    const evDate = toLocalDateString(new Date(ev.start_time));
+    return evDate === dateStr;
+  });
+  const holidayEvent = dayEvents.find(e => e.event_type === 'holiday');
+  const isBlocked = !!holidayEvent;
+  const nonHolidayEvents = dayEvents.filter(e => e.event_type !== 'holiday');
+  const sortedEvents = [...nonHolidayEvents].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  const hours = Array.from({ length: 15 }, (_, i) => i + 7); // 7:00 to 21:00
+
+  return (
+    <div className="cal-dayview-container">
+      <div className="cal-dayview-header-card">
+        <div>
+          <h2 className="cal-dayview-title">
+            {DAYS_FULL[currentDate.getDay()]}, {currentDate.getDate()} de {MONTHS_ES[currentDate.getMonth()]} {currentDate.getFullYear()}
+          </h2>
+          <span className="cal-dayview-subtitle">
+            {isBlocked ? 'Feriado Institucional' : `${sortedEvents.length} ${sortedEvents.length === 1 ? 'evento programado' : 'eventos programados'}`}
+          </span>
+        </div>
+        {isAdmin && !isBlocked && (
+          <button
+            className="cal-day-add-btn"
+            style={{ maxWidth: '180px' }}
+            onClick={() => onDayClick(currentDate)}
+          >
+            ＋ Nuevo Evento
+          </button>
+        )}
+      </div>
+
+      {isBlocked && (
+        <div className="cal-day-holiday-alert" style={{ marginBottom: '1rem' }}>
+          <span className="cal-day-holiday-icon">🚫</span>
+          <div>
+            <strong style={{ fontSize: '0.85rem' }}>FERIADO INSTITUCIONAL</strong>
+            <p style={{ margin: 0, fontSize: '0.8rem' }}>{holidayEvent.title}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Hourly Timeline */}
+      <div className="cal-dayview-timeline">
+        {hours.map(h => {
+          const hourEvents = sortedEvents.filter(ev => {
+            const startH = new Date(ev.start_time).getHours();
+            return startH === h;
+          });
+
+          return (
+            <div
+              key={h}
+              className="cal-dayview-hour-row"
+              onClick={() => {
+                if (isBlocked || !isAdmin) return;
+                const slotDate = new Date(currentDate);
+                slotDate.setHours(h, 0, 0, 0);
+                onSlotClick(slotDate);
+              }}
+            >
+              <div className="cal-dayview-hour-label">
+                {String(h).padStart(2, '0')}:00
+              </div>
+              <div className="cal-dayview-hour-content">
+                {hourEvents.length === 0 ? (
+                  <div className="cal-dayview-empty-slot">
+                    {isAdmin && !isBlocked ? (
+                      <span className="cal-slot-hint">+ Programar a las {String(h).padStart(2, '0')}:00</span>
+                    ) : (
+                      <span className="cal-slot-empty-label">Disponible</span>
+                    )}
+                  </div>
+                ) : (
+                  hourEvents.map(ev => {
+                    const isCancelled = ev.status === 'cancelled';
+                    return (
+                      <div
+                        key={ev.id}
+                        className={`cal-day-event-card ${isCancelled ? 'cancelled' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick(ev);
+                        }}
+                        style={{ borderLeftColor: isCancelled ? '#94a3b8' : (ev.color || '#0284c7') }}
+                      >
+                        <div className="cal-day-card-header">
+                          <span className="cal-day-card-time">
+                            🕒 {formatTime(ev.start_time)} – {formatTime(ev.end_time)}
+                          </span>
+                          {isCancelled && <span className="cal-day-badge-cancelled">CANCELADO</span>}
+                        </div>
+                        <div className="cal-day-card-title">
+                          {isCancelled ? '🚫 ' : ''}{ev.requires_coffee && '☕ '}{ev.requires_tys && '🖥️ '}{ev.title}
+                        </div>
+                        {ev.description && <p className="cal-day-card-desc">{ev.description}</p>}
+                        <div className="cal-day-card-footer">
+                          <span className="cal-day-card-location">📍 {ev.location || 'Sala de Ateneo'}</span>
+                          <div className="cal-day-card-tags">
+                            {ev.requires_coffee && <span className="cal-tag-coffee" title="Requiere refrigerio / café">☕ Café</span>}
+                            {ev.requires_tys && <span className="cal-tag-tys" title="Requiere soporte TyS">🖥️ TyS</span>}
+                            {ev.attendees_count > 0 && <span className="cal-tag-attendees">👥 {ev.attendees_count}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ===== DAY EVENTS MODAL / BOTTOM SHEET =====
+function DayEventsModal({ data, onClose, onEventClick, onNewEvent, onViewDay, isAdmin }) {
+  if (!data) return null;
+  const { date, events = [], holidayEvent } = data;
+
+  const formattedDate = date.toLocaleDateString('es-AR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  const titleDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
+  const sortedEvents = [...events].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+  return (
+    <div className="cal-day-modal-backdrop" onClick={onClose}>
+      <div className="cal-day-modal" onClick={e => e.stopPropagation()}>
+        <div className="cal-day-modal-header">
+          <div>
+            <h3 className="cal-day-modal-title">{titleDate}</h3>
+            <span className="cal-day-modal-subtitle">
+              {holidayEvent
+                ? 'Feriado Institucional'
+                : `${sortedEvents.length} ${sortedEvents.length === 1 ? 'evento programado' : 'eventos programados'}`}
+            </span>
+          </div>
+          <button className="cal-day-modal-close" onClick={onClose} aria-label="Cerrar">✕</button>
+        </div>
+
+        <div className="cal-day-modal-body">
+          {holidayEvent && (
+            <div className="cal-day-holiday-alert">
+              <span className="cal-day-holiday-icon">🚫</span>
+              <div>
+                <strong style={{ fontSize: '0.85rem' }}>FERIADO INSTITUCIONAL</strong>
+                <p style={{ margin: 0, fontSize: '0.8rem' }}>{holidayEvent.title}</p>
+              </div>
+            </div>
+          )}
+
+          {sortedEvents.length === 0 && !holidayEvent ? (
+            <div className="cal-day-empty">
+              <span style={{ fontSize: '2.5rem' }}>📅</span>
+              <p style={{ fontWeight: 600 }}>No hay eventos registrados para este día.</p>
+              <p style={{ fontSize: '0.8rem', opacity: 0.8 }}>La sala se encuentra disponible.</p>
+            </div>
+          ) : (
+            <div className="cal-day-event-list">
+              {sortedEvents.map(ev => {
+                const isCancelled = ev.status === 'cancelled';
+                return (
+                  <div
+                    key={ev.id}
+                    className={`cal-day-event-card ${isCancelled ? 'cancelled' : ''}`}
+                    onClick={() => {
+                      onClose();
+                      onEventClick(ev);
+                    }}
+                    style={{ borderLeftColor: isCancelled ? '#94a3b8' : (ev.color || '#0284c7') }}
+                  >
+                    <div className="cal-day-card-header">
+                      <span className="cal-day-card-time">
+                        🕒 {formatTime(ev.start_time)} – {formatTime(ev.end_time)}
+                      </span>
+                      {isCancelled && <span className="cal-day-badge-cancelled">CANCELADO</span>}
+                    </div>
+                    <div className="cal-day-card-title">
+                      {isCancelled ? '🚫 ' : ''}{ev.requires_coffee && '☕ '}{ev.requires_tys && '🖥️ '}{ev.title}
+                    </div>
+                    {ev.description && <p className="cal-day-card-desc">{ev.description}</p>}
+                    <div className="cal-day-card-footer">
+                      <span className="cal-day-card-location">📍 {ev.location || 'Sala de Ateneo'}</span>
+                      <div className="cal-day-card-tags">
+                        {ev.requires_coffee && <span className="cal-tag-coffee" title="Requiere café">☕ Café</span>}
+                        {ev.requires_tys && <span className="cal-tag-tys" title="Requiere TyS">🖥️ TyS</span>}
+                        {ev.attendees_count > 0 && <span className="cal-tag-attendees">👥 {ev.attendees_count}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="cal-day-modal-footer">
+          <button
+            className="cal-day-viewday-btn"
+            onClick={() => onViewDay(date)}
+          >
+            📅 Ver en detalle
+          </button>
+          {isAdmin && !holidayEvent && (
+            <button
+              className="cal-day-add-btn"
+              onClick={() => {
+                onClose();
+                onNewEvent(date);
+              }}
+            >
+              ＋ Nuevo Evento
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
