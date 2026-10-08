@@ -10,6 +10,7 @@ import { UnassignedNode } from './components/UnassignedNode';
 import ConfirmationModal from './components/ConfirmationModal';
 import { orgService } from './services/orgService';
 import UserMenu from './components/UserMenu';
+import MobileOrganigramaModal from './components/MobileOrganigramaModal';
 import {
   DndContext,
   DragOverlay,
@@ -235,6 +236,7 @@ function App({ embedded = false }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDockOpen, setIsDockOpen] = useState(true); // Show/hide unassigned dock
   const [assigningNodeId, setAssigningNodeId] = useState(null); // Click-to-assign mode
+  const [isMobilePdfOpen, setIsMobilePdfOpen] = useState(false);
 
   // Confirmation Modal State
   const [modalState, setModalState] = useState({
@@ -684,8 +686,28 @@ function App({ embedded = false }) {
         </div>
 
         <div style={{ display: 'flex', gap: '1rem' }}>
-          {/* EXPANSION CONTROLS */}
+          {/* EXPANSION & MOBILE EXPORT CONTROLS */}
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setIsMobilePdfOpen(true)}
+              title="Organigrama en PDF vertical continuo para celular"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '8px',
+                border: '1px solid #1E5FA6',
+                background: '#EBF2FA',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                color: '#1E5FA6',
+                fontWeight: 700,
+                boxShadow: '0 1px 2px rgba(30,95,166,0.1)'
+              }}
+            >
+              📱 PDF Celular
+            </button>
             <button onClick={handleExpandAll} style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontSize: '0.8rem' }}>
               Expandir Todo
             </button>
@@ -1052,6 +1074,12 @@ function App({ embedded = false }) {
         {/* RESOTRED ZOOM CONTROLS */}
         <div className="zoom-controls-wrapper">
           <button
+            onClick={() => setIsMobilePdfOpen(true)}
+            title="Exportar PDF para Celular (Infografía Vertical)"
+            style={{ width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: '#1E5FA6', boxShadow: 'var(--shadow-md)', cursor: 'pointer', fontSize: '1.15rem', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            📱
+          </button>
+          <button
             onClick={handleZoomIn}
             style={{ width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: 'white', boxShadow: 'var(--shadow-md)', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             +
@@ -1198,6 +1226,13 @@ function App({ embedded = false }) {
         isDestructive={modalState.isDestructive}
         onConfirm={modalState.onConfirm}
         onCancel={modalState.onCancel}
+      />
+
+      {/* Mobile Vertical Organigrama Modal */}
+      <MobileOrganigramaModal
+        isOpen={isMobilePdfOpen}
+        onClose={() => setIsMobilePdfOpen(false)}
+        rootData={data}
       />
 
     </div>
