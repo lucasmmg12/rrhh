@@ -220,7 +220,9 @@ const DeptListChildren = ({ node, onSelect }) => {
 };
 
 
-function App({ embedded = false }) {
+function App({ embedded = false, isReadonly: isReadonlyProp = false }) {
+  const isReadonly = isReadonlyProp || new URLSearchParams(window.location.search).get('public') === 'true';
+
   // Use local state instead of hook for now
   const [data, setData] = useState(null); // Init as null, load from DB
   const [isLoading, setIsLoading] = useState(true);
@@ -230,6 +232,14 @@ function App({ embedded = false }) {
   const [viewMode, setViewMode] = useState('hierarchy');
   const [zoom, setZoom] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [copiedPublicLink, setCopiedPublicLink] = useState(false);
+
+  const handleCopyPublicLink = () => {
+    const publicUrl = `${window.location.origin}/organigrama-publico.html`;
+    navigator.clipboard.writeText(publicUrl);
+    setCopiedPublicLink(true);
+    setTimeout(() => setCopiedPublicLink(false), 2500);
+  };
 
   // Unassigned Nodes & Drawer State
   const [unassignedNodes, setUnassignedNodes] = useState([]); // Temporary dock for new nodes
@@ -283,6 +293,12 @@ function App({ embedded = false }) {
       ]);
 
       if (!nodes || nodes.length === 0) {
+        if (isReadonly) {
+          setData(initialOrgData);
+          setExpandedIds(new Set([initialOrgData.id]));
+          setUnassignedNodes([]);
+          return;
+        }
         console.log("Database empty. Seeding...");
         await orgService.seedFromData(initialOrgData);
         nodes = await orgService.getOrgChart();
@@ -361,7 +377,7 @@ function App({ embedded = false }) {
   const handleNodeSelect = (node) => {
     if (!isViewDragging) {
       // If we are in "assigning" mode, assign the unassigned node here
-      if (assigningNodeId) {
+      if (!isReadonly && assigningNodeId) {
         const unassignedNode = unassignedNodes.find(n => n.id === assigningNodeId);
         if (unassignedNode) {
           setModalState({
@@ -398,6 +414,7 @@ function App({ embedded = false }) {
   const handleClosePanel = () => setSelectedNode(null);
 
   const handleUpdateNode = async (updatedNode) => {
+    if (isReadonly) return;
     try {
       await orgService.updateNode(updatedNode.id, updatedNode);
       // Optimistic update
@@ -429,6 +446,7 @@ function App({ embedded = false }) {
   };
 
   const handleDeleteNode = (nodeId) => {
+    if (isReadonly) return;
     if (data.id === nodeId) {
       alert("No se puede eliminar el nodo raíz (Director General). Edítalo en su lugar.");
       return;
@@ -458,6 +476,7 @@ function App({ embedded = false }) {
 
   // Add new node to staging dock
   const handleCreateNode = async (newNode) => {
+    if (isReadonly) return;
     try {
       // Insert as unassigned (no parentId)
       const savedNode = await orgService.createNode(newNode);
@@ -475,6 +494,7 @@ function App({ embedded = false }) {
 
   // --- DRAG START HANDLER ---
   const handleDragStart = (event) => {
+    if (isReadonly) return;
     const { active } = event;
     if (active.data?.current?.type === 'unassigned') {
       setActiveDragNode(active.data.current.node);
@@ -486,6 +506,7 @@ function App({ embedded = false }) {
   // --- DRAG END HANDLER (REARRANGE NODES - PERSISTED) ---
   const handleDragEnd = (event) => {
     setActiveDragNode(null);
+    if (isReadonly) return;
     const { active, over } = event;
     if (!over) return;
 
@@ -654,40 +675,86 @@ function App({ embedded = false }) {
   }
 
   return (
-    <div className="app-container">
+    <div className="app-container" style={embedded ? { height: 'calc(100vh - 67px)' } : undefined}>
       {/* Header Controls — hidden when embedded in hub */}
       {!embedded && <header className="org-controls">
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ height: '36px', objectFit: 'contain' }} />
           <h1 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700, color: 'var(--color-primary)' }}>
             Organigrama Institucional
           </h1>
-          <span style={{ padding: '0.25rem 0.5rem', background: 'rgba(2, 132, 199, 0.1)', color: '#0284c7', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-            PROTOTIPO EDITABLE (LOCAL)
+          <span style={{
+            padding: '0.25rem 0.6rem',
+            background: isReadonly ? '#f0fdf4' : 'rgba(2, 132, 199, 0.1)',
+            color: isReadonly ? '#15803d' : '#0284c7',
+            border: isReadonly ? '1px solid #bbf7d0' : 'none',
+            borderRadius: '6px',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+          }}>
+            {isReadonly ? '🌐 VISTA PÚBLICA — SOLO LECTURA' : 'MODO ADMINISTRACIÓN'}
           </span>
-          <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.5rem' }}>
-            <a href="/" style={{
-              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-              borderRadius: '12px', background: '#f1f5f9', color: '#475569',
-              textDecoration: 'none'
-            }}>🏠 Inicio</a>
-            <a href="/calendario.html" style={{
-              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-              borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
-              textDecoration: 'none'
-            }}>📅 Calendario</a>
-            <a href="/agenda.html" style={{
-              fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
-              borderRadius: '12px', background: '#fef3c7', color: '#d97706',
-              textDecoration: 'none'
-            }}>📋 Agenda Pública</a>
-          </nav>
-          <UserMenu />
+          {!isReadonly && (
+            <>
+              <nav style={{ display: 'flex', gap: '0.35rem', marginLeft: '0.5rem' }}>
+                <a href="/" style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                  borderRadius: '12px', background: '#f1f5f9', color: '#475569',
+                  textDecoration: 'none'
+                }}>🏠 Inicio</a>
+                <a href="/calendario.html" style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                  borderRadius: '12px', background: '#e0f2fe', color: '#0284c7',
+                  textDecoration: 'none'
+                }}>📅 Calendario</a>
+                <a href="/agenda.html" style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                  borderRadius: '12px', background: '#fef3c7', color: '#d97706',
+                  textDecoration: 'none'
+                }}>📋 Agenda Pública</a>
+              </nav>
+              <UserMenu />
+            </>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          {/* EXPANSION & MOBILE EXPORT CONTROLS */}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* EXPANSION & PUBLIC LINK CONTROLS */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {!isReadonly && (
+              <>
+                <button
+                  onClick={handleCopyPublicLink}
+                  title="Copiar enlace público de solo lectura"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.35rem',
+                    padding: '0.5rem 0.75rem', borderRadius: '8px',
+                    border: '1px solid #059669',
+                    background: copiedPublicLink ? '#059669' : '#ecfdf5',
+                    color: copiedPublicLink ? '#ffffff' : '#047857',
+                    cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {copiedPublicLink ? '✅ ¡Link Copiado!' : '🔗 Copiar Link Público'}
+                </button>
+                <a
+                  href="/organigrama-publico.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir vista pública en nueva pestaña"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.35rem',
+                    padding: '0.5rem 0.75rem', borderRadius: '8px',
+                    border: '1px solid #0284c7', background: '#e0f2fe',
+                    color: '#0369a1', textDecoration: 'none',
+                    fontSize: '0.8rem', fontWeight: 700,
+                  }}
+                >
+                  🌐 Vista Pública
+                </a>
+              </>
+            )}
             <button
               onClick={() => setIsMobilePdfOpen(true)}
               title="Organigrama en PDF vertical continuo para celular"
@@ -714,57 +781,59 @@ function App({ embedded = false }) {
             <button onClick={handleCollapseAll} style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontSize: '0.8rem' }}>
               Colapsar Todo
             </button>
-            <button
-              onClick={() => {
-                setModalState({
-                  isOpen: true,
-                  title: '🔄 Sincronizar Estructura',
-                  message: '¿Re-sincronizar la base de datos con la estructura definida en data.js? Esto REEMPLAZARÁ todos los datos actuales.',
-                  confirmText: 'Sí, Sincronizar',
-                  cancelText: 'Cancelar',
-                  isDestructive: true,
-                  onConfirm: async () => {
-                    try {
-                      closeModal();
-                      setIsLoading(true);
-                      const result = await seedDatabase();
-                      await loadOrgChart();
-                      setIsLoading(false);
-                      // Show result in modal
-                      setModalState({
-                        isOpen: true,
-                        title: result.success ? '✅ Sincronización Exitosa' : '❌ Error de Sincronización',
-                        message: result.success
-                          ? `¡Base de datos sincronizada con éxito! ${result.count} puestos guardados.`
-                          : `Error al sincronizar: ${result.error}`,
-                        confirmText: 'Aceptar',
-                        cancelText: '',
-                        isDestructive: false,
-                        onConfirm: closeModal,
-                        onCancel: closeModal
-                      });
-                    } catch (e) {
-                      console.error('Reseed failed', e);
-                      setIsLoading(false);
-                      setModalState({
-                        isOpen: true,
-                        title: '❌ Error Inesperado',
-                        message: `Error al sincronizar: ${e.message}`,
-                        confirmText: 'Aceptar',
-                        cancelText: '',
-                        isDestructive: false,
-                        onConfirm: closeModal,
-                        onCancel: closeModal
-                      });
-                    }
-                  },
-                  onCancel: closeModal
-                });
-              }}
-              style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #f59e0b', background: '#fffbeb', cursor: 'pointer', fontSize: '0.8rem', color: '#92400e', fontWeight: 600 }}
-            >
-              🔄 Sincronizar
-            </button>
+            {!isReadonly && (
+              <button
+                onClick={() => {
+                  setModalState({
+                    isOpen: true,
+                    title: '🔄 Sincronizar Estructura',
+                    message: '¿Re-sincronizar la base de datos con la estructura definida en data.js? Esto REEMPLAZARÁ todos los datos actuales.',
+                    confirmText: 'Sí, Sincronizar',
+                    cancelText: 'Cancelar',
+                    isDestructive: true,
+                    onConfirm: async () => {
+                      try {
+                        closeModal();
+                        setIsLoading(true);
+                        const result = await seedDatabase();
+                        await loadOrgChart();
+                        setIsLoading(false);
+                        // Show result in modal
+                        setModalState({
+                          isOpen: true,
+                          title: result.success ? '✅ Sincronización Exitosa' : '❌ Error de Sincronización',
+                          message: result.success
+                            ? `¡Base de datos sincronizada con éxito! ${result.count} puestos guardados.`
+                            : `Error al sincronizar: ${result.error}`,
+                          confirmText: 'Aceptar',
+                          cancelText: '',
+                          isDestructive: false,
+                          onConfirm: closeModal,
+                          onCancel: closeModal
+                        });
+                      } catch (e) {
+                        console.error('Reseed failed', e);
+                        setIsLoading(false);
+                        setModalState({
+                          isOpen: true,
+                          title: '❌ Error Inesperado',
+                          message: `Error al sincronizar: ${e.message}`,
+                          confirmText: 'Aceptar',
+                          cancelText: '',
+                          isDestructive: false,
+                          onConfirm: closeModal,
+                          onCancel: closeModal
+                        });
+                      }
+                    },
+                    onCancel: closeModal
+                  });
+                }}
+                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #f59e0b', background: '#fffbeb', cursor: 'pointer', fontSize: '0.8rem', color: '#92400e', fontWeight: 600 }}
+              >
+                🔄 Sincronizar
+              </button>
+            )}
           </div>
 
           <select
@@ -802,6 +871,112 @@ function App({ embedded = false }) {
           />
         </div>
       </header>}
+
+      {/* Embedded Compact Toolbar (inside RRHH Hub) */}
+      {embedded && !isReadonly && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0.65rem 1.25rem',
+          background: '#ffffff',
+          borderBottom: '1px solid var(--neutral-200, #e2e8f0)',
+          flexWrap: 'wrap', gap: '0.5rem',
+          zIndex: 20,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleCopyPublicLink}
+              title="Copiar enlace público de solo lectura para compartir"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.4rem 0.75rem', borderRadius: '8px',
+                border: '1px solid #059669',
+                background: copiedPublicLink ? '#059669' : '#ecfdf5',
+                color: copiedPublicLink ? '#ffffff' : '#047857',
+                cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
+                transition: 'all 0.2s',
+              }}
+            >
+              {copiedPublicLink ? '✅ ¡Link Copiado!' : '🔗 Copiar Link Público'}
+            </button>
+            <a
+              href="/organigrama-publico.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir vista pública (solo navegación) en nueva pestaña"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.4rem 0.75rem', borderRadius: '8px',
+                border: '1px solid #0284c7', background: '#0284c7',
+                color: '#ffffff', textDecoration: 'none',
+                fontSize: '0.78rem', fontWeight: 700,
+              }}
+            >
+              🌐 Abrir Vista Pública
+            </a>
+            <button
+              onClick={() => setIsMobilePdfOpen(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.4rem 0.75rem', borderRadius: '8px',
+                border: '1px solid #1E5FA6', background: '#EBF2FA',
+                color: '#1E5FA6', cursor: 'pointer',
+                fontSize: '0.78rem', fontWeight: 700,
+              }}
+            >
+              📱 PDF Celular
+            </button>
+            <button
+              onClick={handleExpandAll}
+              style={{
+                padding: '0.4rem 0.65rem', borderRadius: '8px',
+                border: '1px solid #cbd5e1', background: '#ffffff',
+                cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#334155',
+              }}
+            >
+              Expandir Todo
+            </button>
+            <button
+              onClick={handleCollapseAll}
+              style={{
+                padding: '0.4rem 0.65rem', borderRadius: '8px',
+                border: '1px solid #cbd5e1', background: '#ffffff',
+                cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#334155',
+              }}
+            >
+              Colapsar Todo
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <select
+              value={viewMode}
+              onChange={(e) => {
+                setViewMode(e.target.value);
+                setZoom(1);
+              }}
+              style={{
+                padding: '0.4rem 0.65rem', borderRadius: '8px',
+                border: '1px solid #cbd5e1', background: '#f8fafc',
+                fontSize: '0.78rem', fontWeight: 600, color: '#334155', cursor: 'pointer',
+              }}
+            >
+              <option value="hierarchy">Vista Jerárquica</option>
+              <option value="department">Vista por Servicios</option>
+            </select>
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={handleSearch}
+              placeholder="Buscar colaborador o puesto..."
+              style={{
+                padding: '0.4rem 0.75rem', borderRadius: '8px',
+                border: '1px solid #cbd5e1', width: '230px',
+                fontSize: '0.78rem', background: '#f8fafc',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="org-container">
@@ -847,6 +1022,7 @@ function App({ embedded = false }) {
                     selectedId={selectedNode?.id}
                     expandedIds={expandedIds}
                     onToggle={handleToggleExpand}
+                    isReadonly={isReadonly}
                   />
                 </ul>
               </div>
@@ -856,7 +1032,7 @@ function App({ embedded = false }) {
           </main>
 
           {/* --- UNASSIGNED NODES DOCK --- */}
-          {unassignedNodes.length > 0 && !isDockOpen && (
+          {!isReadonly && unassignedNodes.length > 0 && !isDockOpen && (
             <div
               onClick={() => setIsDockOpen(true)}
               style={{
@@ -887,7 +1063,7 @@ function App({ embedded = false }) {
             </div>
           )}
 
-          {unassignedNodes.length > 0 && isDockOpen && (
+          {!isReadonly && unassignedNodes.length > 0 && isDockOpen && (
             <div className="unassigned-dock" style={{
               position: 'fixed',
               bottom: '2rem',
@@ -1097,42 +1273,47 @@ function App({ embedded = false }) {
           onClose={handleClosePanel}
           onUpdateNode={handleUpdateNode}
           onDeleteNode={handleDeleteNode}
+          isReadonly={isReadonly}
         />
 
       </div>
 
       {/* Floating Action Button (FAB) for New Position */}
-      <button
-        onClick={() => setIsDrawerOpen(true)}
-        style={{
-          position: 'fixed',
-          bottom: '2rem',
-          right: '2rem',
-          width: '56px',
-          height: '56px',
-          borderRadius: '50%',
-          background: 'var(--color-primary)',
-          color: 'white',
-          border: 'none',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1), 0 10px 15px rgba(0,0,0,0.1)',
-          fontSize: '2rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          zIndex: 100
-        }}
-        className="fab-add"
-      >
-        +
-      </button>
+      {!isReadonly && (
+        <>
+          <button
+            onClick={() => setIsDrawerOpen(true)}
+            style={{
+              position: 'fixed',
+              bottom: '2rem',
+              right: '2rem',
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'var(--color-primary)',
+              color: 'white',
+              border: 'none',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1), 0 10px 15px rgba(0,0,0,0.1)',
+              fontSize: '2rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 100
+            }}
+            className="fab-add"
+          >
+            +
+          </button>
 
-      {/* New Position Drawer */}
-      <NewPositionDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        onAddNode={handleCreateNode}
-      />
+          {/* New Position Drawer */}
+          <NewPositionDrawer
+            isOpen={isDrawerOpen}
+            onClose={() => setIsDrawerOpen(false)}
+            onAddNode={handleCreateNode}
+          />
+        </>
+      )}
 
       {/* MOBILE BOTTOM NAVIGATION */}
       <nav className="bottom-nav">

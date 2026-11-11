@@ -22,7 +22,7 @@ const collectDescendants = (node, list = []) => {
     return list;
 };
 
-export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDeleteNode }) => {
+export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDeleteNode, isReadonly = false }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState(null);
     const [attachments, setAttachments] = useState([]);
@@ -190,10 +190,10 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
             {/* Panel Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderBottom: '1px solid var(--color-border, #e2e8f0)', flexShrink: 0 }}>
                 <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--color-text-primary, #1e293b)' }}>
-                    {isEditing ? '✏️ Editar Posición' : '📋 Ficha de Posición'}
+                    {!isReadonly && isEditing ? '✏️ Editar Posición' : '📋 Ficha de Posición'}
                 </h2>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {!isEditing && (
+                    {!isReadonly && !isEditing && (
                         <button
                             onClick={() => setIsEditing(true)}
                             style={{ background: 'var(--color-primary-light, #eff6ff)', border: '1px solid var(--color-primary, #005eb8)', color: 'var(--color-primary, #005eb8)', cursor: 'pointer', fontWeight: 600, padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.85rem' }}
@@ -214,7 +214,7 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
             {/* Panel Body — Scroll */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
 
-                {isEditing ? (
+                {!isReadonly && isEditing ? (
                     <div style={{ display: 'grid', gap: '1.25rem' }}>
                         <div className="form-group">
                             <label style={labelStyle}>Nombre del Colaborador</label>
@@ -546,34 +546,39 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
                             </Section>
 
                             {/* ========= DOCUMENT ATTACHMENTS ========= */}
+                            {(!isReadonly || attachments.length > 0) && (
                             <Section title="📎 Documentos del Puesto (Perfil)">
                                 {/* Upload button */}
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    onChange={handleAttachmentUpload}
-                                    style={{ display: 'none' }}
-                                />
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isUploading}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.75rem',
-                                        borderRadius: '10px',
-                                        border: '2px dashed #cbd5e1',
-                                        background: '#f8fafc',
-                                        cursor: isUploading ? 'wait' : 'pointer',
-                                        color: '#64748b',
-                                        fontWeight: 600,
-                                        fontSize: '0.85rem',
-                                        transition: 'all 0.2s',
-                                        marginBottom: '0.75rem'
-                                    }}
-                                >
-                                    {isUploading ? '⏳ Subiendo archivo...' : '📤 Subir PDF o Word'}
-                                </button>
+                                {!isReadonly && (
+                                    <>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                            onChange={handleAttachmentUpload}
+                                            style={{ display: 'none' }}
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            disabled={isUploading}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                borderRadius: '10px',
+                                                border: '2px dashed #cbd5e1',
+                                                background: '#f8fafc',
+                                                cursor: isUploading ? 'wait' : 'pointer',
+                                                color: '#64748b',
+                                                fontWeight: 600,
+                                                fontSize: '0.85rem',
+                                                transition: 'all 0.2s',
+                                                marginBottom: '0.75rem'
+                                            }}
+                                        >
+                                            {isUploading ? '⏳ Subiendo archivo...' : '📤 Subir PDF o Word'}
+                                        </button>
+                                    </>
+                                )}
 
                                 {/* Attachment list */}
                                 {attachments.length > 0 ? (
@@ -603,13 +608,15 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
                                                 >
                                                     Ver
                                                 </a>
-                                                <button
-                                                    onClick={() => handleDeleteAttachment(att)}
-                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', padding: '0.25rem' }}
-                                                    title="Eliminar archivo"
-                                                >
-                                                    ✕
-                                                </button>
+                                                {!isReadonly && (
+                                                    <button
+                                                        onClick={() => handleDeleteAttachment(att)}
+                                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', padding: '0.25rem' }}
+                                                        title="Eliminar archivo"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -619,13 +626,16 @@ export const DetailsPanel = ({ node, parentNode, onClose, onUpdateNode, onDelete
                                     </p>
                                 )}
                             </Section>
+                            )}
 
                             {/* Action Button */}
-                            <div style={{ marginTop: '0.5rem' }}>
-                                <button className="btn-primary" style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', background: 'var(--color-primary)', color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
-                                    {node.status === 'vacancy' ? '📋 Gestionar Solicitud' : '📁 Ver Legajo Completo'}
-                                </button>
-                            </div>
+                            {!isReadonly && (
+                                <div style={{ marginTop: '0.5rem' }}>
+                                    <button className="btn-primary" style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', background: 'var(--color-primary)', color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+                                        {node.status === 'vacancy' ? '📋 Gestionar Solicitud' : '📁 Ver Legajo Completo'}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </>
                 )}

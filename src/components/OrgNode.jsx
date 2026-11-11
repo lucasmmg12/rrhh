@@ -13,7 +13,7 @@ const countDescendants = (node) => {
     return count;
 };
 
-export const OrgNode = ({ node, onSelect, selectedId, level = 0, expandedIds, onToggle }) => {
+export const OrgNode = ({ node, onSelect, selectedId, level = 0, expandedIds, onToggle, isReadonly = false }) => {
     if (!node) return null;
     const isExpanded = expandedIds ? expandedIds.has(node.id) : false;
     const isSelected = selectedId === node.id;
@@ -24,12 +24,14 @@ export const OrgNode = ({ node, onSelect, selectedId, level = 0, expandedIds, on
     // --- DRAG & DROP HOOKS ---
     const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
         id: node.id,
-        data: { node }
+        data: { node },
+        disabled: isReadonly
     });
 
     const { setNodeRef: setDroppableRef, isOver } = useDroppable({
         id: node.id,
-        data: { node }
+        data: { node },
+        disabled: isReadonly
     });
 
     const setNodeRef = (el) => {
@@ -40,13 +42,13 @@ export const OrgNode = ({ node, onSelect, selectedId, level = 0, expandedIds, on
     const levelColor = getLevelColor(node.hierarchy_level ?? level);
 
     const style = {
-        transform: CSS.Translate.toString(transform),
-        opacity: isDragging ? 0.5 : 1,
-        borderLeft: `6px solid ${isOver ? '#22c55e' : levelColor}`,
-        zIndex: isDragging ? 999 : 10,
-        boxShadow: isOver ? '0 0 0 4px rgba(34, 197, 94, 0.4)' : undefined,
-        cursor: isDragging ? 'grabbing' : 'grab',
-        touchAction: 'none'
+        transform: isReadonly ? undefined : CSS.Translate.toString(transform),
+        opacity: !isReadonly && isDragging ? 0.5 : 1,
+        borderLeft: `6px solid ${!isReadonly && isOver ? '#22c55e' : levelColor}`,
+        zIndex: !isReadonly && isDragging ? 999 : 10,
+        boxShadow: !isReadonly && isOver ? '0 0 0 4px rgba(34, 197, 94, 0.4)' : undefined,
+        cursor: isReadonly ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
+        touchAction: isReadonly ? 'manipulation' : 'none'
     };
 
     const handleKeyDown = (e) => {
@@ -83,8 +85,8 @@ export const OrgNode = ({ node, onSelect, selectedId, level = 0, expandedIds, on
                 ref={setNodeRef}
                 className={`org-card ${isSelected ? 'active' : ''} ${isStaff ? 'staff-card' : ''}`}
                 style={style}
-                {...listeners}
-                {...attributes}
+                {...(isReadonly ? {} : listeners)}
+                {...(isReadonly ? {} : attributes)}
                 data-type={node.type}
                 data-status={node.status}
                 data-relationship={node.relationship || 'line'}
@@ -191,6 +193,7 @@ export const OrgNode = ({ node, onSelect, selectedId, level = 0, expandedIds, on
                             level={level + 1}
                             expandedIds={expandedIds}
                             onToggle={onToggle}
+                            isReadonly={isReadonly}
                         />
                     ))}
                 </ul>

@@ -12,6 +12,7 @@ export default defineConfig({
         prestadores: resolve(__dirname, 'prestadores.html'),
         prestadoresDirectorio: resolve(__dirname, 'prestadores-directorio.html'),
         organigrama: resolve(__dirname, 'organigrama.html'),
+        organigramaPublico: resolve(__dirname, 'organigrama-publico.html'),
         calendario: resolve(__dirname, 'calendario.html'),
         agenda: resolve(__dirname, 'agenda.html'),
         fichadas: resolve(__dirname, 'fichadas.html'),
