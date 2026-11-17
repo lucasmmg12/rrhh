@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Home, Building2, Calendar, Clock, ClipboardCheck, CalendarHeart,
   PanelLeftClose, PanelLeft, ChevronDown, Settings, Timer, HelpCircle,
-  BarChart3, UserPlus,
+  BarChart3, UserPlus, UserCheck, Stethoscope,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
@@ -155,6 +155,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
         {/* ─── Items individuales ─── */}
         {[
           { id: 'organigrama', label: 'Organigrama', icon: Building2 },
+          { id: 'seleccion', label: 'Selección de Personal', icon: UserCheck },
+          { id: 'padron-salus', label: 'Padrón Médico (SALUS)', icon: Stethoscope },
           { id: 'calendario', label: 'Agenda de Salas', icon: Calendar },
           { id: 'fichadas', label: 'Control de Fichadas', icon: Clock },
           { id: 'controlhorario', label: 'Control Horario — Sede SF', icon: Timer },

@@ -10,6 +10,8 @@ const EfemeridesApp = lazy(() => import('./efemerides/EfemeridesApp.jsx'));
 const ControlHorarioApp = lazy(() => import('./controlhorario/ControlHorarioApp.jsx'));
 const MetricasSantaFeApp = lazy(() => import('./metricas/MetricasSantaFeApp.jsx'));
 const PrestadoresListApp = lazy(() => import('./prestadores/PrestadoresListApp.jsx'));
+const SeleccionApp = lazy(() => import('./seleccion/SeleccionApp.jsx'));
+const PadronMedicosApp = lazy(() => import('./medicos/PadronMedicosApp.jsx'));
 
 // Loading spinner
 function LoadingSpinner({ label = 'Cargando módulo...' }) {
@@ -41,6 +43,22 @@ function HomePanel() {
       title: 'Organigrama',
       description: 'Estructura organizacional del Sanatorio',
       icon: '🏛️',
+      color: '#1E5FA6',
+      bg: '#EBF2FA',
+    },
+    {
+      id: 'seleccion',
+      title: 'Selección de Personal',
+      description: 'Búsquedas por área, cobertura y seguimiento a 3 meses',
+      icon: '🎯',
+      color: '#0369A1',
+      bg: '#E0F2FE',
+    },
+    {
+      id: 'padron-salus',
+      title: 'Padrón Médico — SALUS',
+      description: 'Línea de tiempo, actividad histórica, Top 15 prácticas y Obras Sociales',
+      icon: '⚕️',
       color: '#1E5FA6',
       bg: '#EBF2FA',
     },
@@ -222,6 +240,8 @@ export default function RRHHApp() {
   const titles = {
     inicio: 'Inicio',
     organigrama: 'Organigrama Institucional',
+    seleccion: 'Selección de Personal',
+    'padron-salus': 'Padrón Histórico de Médicos — SALUS',
     calendario: 'Agenda de Salas',
     fichadas: 'Control de Fichadas',
     controlhorario: 'Control Horario — Sede Santa Fe',
@@ -334,6 +354,18 @@ export default function RRHHApp() {
           {activeView === 'prestadores' && (
             <div style={{ flex: 1, overflow: 'auto' }}>
               <PrestadoresListApp />
+            </div>
+          )}
+
+          {activeView === 'seleccion' && (
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <SeleccionApp />
+            </div>
+          )}
+
+          {activeView === 'padron-salus' && (
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <PadronMedicosApp />
             </div>
           )}
         </Suspense>

@@ -148,7 +148,19 @@ export default function PrestadoresListApp() {
             Registro de difusión de nuevos prestadores incorporados
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => window.__setActiveView?.('padron-salus')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
+              padding: '0.5rem 0.9rem', borderRadius: '8px',
+              background: '#1E5FA6', color: '#ffffff', border: 'none',
+              fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            ⚕️ Padrón Histórico SALUS (Línea de Tiempo)
+          </button>
           <span className="prestadores-list__count">
             👥 {filtered.length} {filtered.length === 1 ? 'prestador' : 'prestadores'}
           </span>

@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -511,6 +512,218 @@ app.get('/api/rrhh/diag/facturacion-schema', async (req, res) => {
             sample: sample.recordset,
         });
     } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Sync Padrón Histórico de Médicos desde SALUS
+app.get('/api/rrhh/sync/padron-medicos', async (req, res) => {
+    try {
+        const db = await getPool();
+        console.log('\n🩺 Extrayendo Padrón Histórico de Médicos desde SALUS...');
+
+        const docsRes = await db.request().query(`
+            SELECT 
+                p.id AS id_personal,
+                LTRIM(RTRIM(p.Nombre)) AS nombre,
+                LTRIM(RTRIM(ISNULL(p.NombreAbrev, ''))) AS nombre_abrev,
+                LTRIM(RTRIM(ISNULL(p.NumColegiado, ''))) AS matricula,
+                LTRIM(RTRIM(ISNULL(p.NumColegiado2, ''))) AS matricula2,
+                LTRIM(RTRIM(ISNULL(p.NIF, ''))) AS nif,
+                LTRIM(RTRIM(ISNULL(p.Telefono1, ''))) AS telefono,
+                LTRIM(RTRIM(ISNULL(p.Telefono2, ''))) AS telefono2,
+                LTRIM(RTRIM(ISNULL(p.email_empresa, ''))) AS email,
+                LTRIM(RTRIM(ISNULL(p.Titulo, ''))) AS titulo,
+                p.FechaNac AS fecha_nacimiento,
+                ISNULL(p.Activo, 0) AS activo_salus,
+                ISNULL(p.Generico, 0) AS es_generico,
+                p.FechaAlta AS fecha_alta_salus,
+                p.FechaBaja AS fecha_baja_salus,
+                COUNT(v.id) AS total_atenciones,
+                COUNT(DISTINCT ps.IdPacient) AS pacientes_unicos,
+                MIN(CAST(v.Data AS DATE)) AS primera_atencion,
+                MAX(CAST(v.Data AS DATE)) AS ultima_atencion,
+                SUM(CASE WHEN v.Data >= DATEADD(DAY, -30, GETDATE()) THEN 1 ELSE 0 END) AS atenciones_30d,
+                SUM(CASE WHEN v.Data >= DATEADD(DAY, -90, GETDATE()) THEN 1 ELSE 0 END) AS atenciones_90d,
+                SUM(CASE WHEN v.Data >= DATEADD(DAY, -180, GETDATE()) THEN 1 ELSE 0 END) AS atenciones_180d,
+                SUM(CASE WHEN v.Data >= DATEADD(DAY, -365, GETDATE()) THEN 1 ELSE 0 END) AS atenciones_365d,
+                COUNT(DISTINCT YEAR(v.Data) * 100 + MONTH(v.Data)) AS meses_activos,
+                COUNT(DISTINCT CAST(v.Data AS DATE)) AS dias_atendidos
+            FROM dbo.Visitas v WITH (NOLOCK)
+            INNER JOIN dbo.PacientsSessions ps WITH (NOLOCK) ON ps.idVisita = v.id
+            INNER JOIN dbo.Personal p WITH (NOLOCK) ON p.id = v.idPersonal
+            WHERE ps.IdAusencia = 1
+              AND v.Data <= GETDATE()
+              AND v.Data >= '2010-01-01'
+            GROUP BY 
+                p.id, p.Nombre, p.NombreAbrev, p.NumColegiado, p.NumColegiado2, p.NIF,
+                p.Telefono1, p.Telefono2, p.email_empresa, p.Titulo, p.FechaNac,
+                p.Activo, p.Generico, p.FechaAlta, p.FechaBaja
+            ORDER BY total_atenciones DESC
+        `);
+
+        const [espRes, tipusRes, osRes, sedeRes, timelineRes] = await Promise.all([
+            db.request().query(`
+                SELECT v.idPersonal AS id_personal, LTRIM(RTRIM(e.Descripcion)) AS especialidad, COUNT(v.id) AS cantidad
+                FROM dbo.Visitas v WITH (NOLOCK)
+                INNER JOIN dbo.PacientsSessions ps WITH (NOLOCK) ON ps.idVisita = v.id
+                INNER JOIN dbo.Especialidades e WITH (NOLOCK) ON e.id = v.idEspecialidad
+                WHERE ps.IdAusencia = 1 AND v.Data <= GETDATE() AND v.Data >= '2010-01-01'
+                  AND e.Descripcion IS NOT NULL AND LTRIM(RTRIM(e.Descripcion)) <> ''
+                GROUP BY v.idPersonal, LTRIM(RTRIM(e.Descripcion))
+                ORDER BY v.idPersonal, cantidad DESC
+            `),
+            db.request().query(`
+                WITH RankedTipus AS (
+                    SELECT v.idPersonal AS id_personal, LTRIM(RTRIM(ts.Nom)) AS tipo_atencion, COUNT(v.id) AS cantidad,
+                           MAX(CAST(v.Data AS DATE)) AS ultima_vez,
+                           ROW_NUMBER() OVER (PARTITION BY v.idPersonal ORDER BY COUNT(v.id) DESC) AS rn
+                    FROM dbo.Visitas v WITH (NOLOCK)
+                    INNER JOIN dbo.PacientsSessions ps WITH (NOLOCK) ON ps.idVisita = v.id
+                    INNER JOIN dbo.TipusDeSessions ts WITH (NOLOCK) ON ts.IdTipus = v.IdTipus
+                    WHERE ps.IdAusencia = 1 AND v.Data <= GETDATE() AND v.Data >= '2010-01-01'
+                      AND ts.Nom IS NOT NULL AND LTRIM(RTRIM(ts.Nom)) <> ''
+                    GROUP BY v.idPersonal, LTRIM(RTRIM(ts.Nom))
+                )
+                SELECT id_personal, tipo_atencion, cantidad, ultima_vez FROM RankedTipus WHERE rn <= 15 ORDER BY id_personal, cantidad DESC
+            `),
+            db.request().query(`
+                WITH RankedOS AS (
+                    SELECT v.idPersonal AS id_personal, LTRIM(RTRIM(ent.nombre)) AS obra_social, COUNT(v.id) AS cantidad,
+                           ROW_NUMBER() OVER (PARTITION BY v.idPersonal ORDER BY COUNT(v.id) DESC) AS rn
+                    FROM dbo.Visitas v WITH (NOLOCK)
+                    INNER JOIN dbo.PacientsSessions ps WITH (NOLOCK) ON ps.idVisita = v.id
+                    INNER JOIN dbo.FE_Entidades ent WITH (NOLOCK) ON ent.id = ps.idCliente
+                    WHERE ps.IdAusencia = 1 AND v.Data <= GETDATE() AND v.Data >= '2010-01-01'
+                      AND ent.nombre IS NOT NULL AND LTRIM(RTRIM(ent.nombre)) <> ''
+                    GROUP BY v.idPersonal, LTRIM(RTRIM(ent.nombre))
+                )
+                SELECT id_personal, obra_social, cantidad FROM RankedOS WHERE rn <= 15 ORDER BY id_personal, cantidad DESC
+            `),
+            db.request().query(`
+                SELECT v.idPersonal AS id_personal, v.idBd AS id_centro, COUNT(v.id) AS cantidad, MAX(CAST(v.Data AS DATE)) AS ultima_vez
+                FROM dbo.Visitas v WITH (NOLOCK)
+                INNER JOIN dbo.PacientsSessions ps WITH (NOLOCK) ON ps.idVisita = v.id
+                WHERE ps.IdAusencia = 1 AND v.Data <= GETDATE() AND v.Data >= '2010-01-01'
+                GROUP BY v.idPersonal, v.idBd ORDER BY v.idPersonal, cantidad DESC
+            `),
+            db.request().query(`
+                SELECT v.idPersonal AS id_personal, YEAR(v.Data) AS anio, COUNT(v.id) AS cantidad
+                FROM dbo.Visitas v WITH (NOLOCK)
+                INNER JOIN dbo.PacientsSessions ps WITH (NOLOCK) ON ps.idVisita = v.id
+                WHERE ps.IdAusencia = 1 AND v.Data <= GETDATE() AND v.Data >= '2015-01-01'
+                GROUP BY v.idPersonal, YEAR(v.Data) ORDER BY v.idPersonal, anio ASC
+            `),
+        ]);
+
+        const CENTRO_MAP = { 1: 'SAN LUIS SUR', 8: 'SANTA FE', 11: 'SAN LUIS NORTE', 12: 'SAN LUIS SEDE 3' };
+        const doctorsMap = new Map();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (const r of docsRes.recordset) {
+            const primera = formatDate(r.primera_atencion);
+            const ultima = formatDate(r.ultima_atencion);
+            const dUltima = ultima ? new Date(ultima + 'T00:00:00') : null;
+            const diasSinAtender = dUltima ? Math.max(0, Math.floor((today.getTime() - dUltima.getTime()) / 86400000)) : 9999;
+            let estadoActividad = 'Inactivo';
+            if (diasSinAtender <= 90) estadoActividad = 'Activo';
+            else if (diasSinAtender <= 365) estadoActividad = 'Baja Frecuencia';
+
+            doctorsMap.set(r.id_personal, {
+                id_personal: r.id_personal,
+                nombre: r.nombre || `Profesional #${r.id_personal}`,
+                nombre_abrev: r.nombre_abrev || '',
+                matricula: r.matricula || r.matricula2 || '',
+                nif: r.nif || '',
+                telefono: [r.telefono, r.telefono2].filter(Boolean).join(' / '),
+                email: r.email || '',
+                titulo: r.titulo || '',
+                fecha_nacimiento: formatDate(r.fecha_nacimiento),
+                activo_salus: Boolean(r.activo_salus),
+                es_generico: Boolean(r.es_generico) || /GUARDIA|GENERICO|SIN MEDICO|SERVICIO|LABORATORIO|ECOGRAFIA|RADIOLOGIA|TOMOGRAFIA|MAMOGRAFIA|RESONANCIA/i.test(r.nombre || ''),
+                fecha_alta_salus: formatDate(r.fecha_alta_salus),
+                fecha_baja_salus: formatDate(r.fecha_baja_salus),
+                total_atenciones: Number(r.total_atenciones) || 0,
+                pacientes_unicos: Number(r.pacientes_unicos) || 0,
+                primera_atencion: primera,
+                ultima_atencion: ultima,
+                dias_sin_atender: diasSinAtender,
+                estado_actividad: estadoActividad,
+                atenciones_30d: Number(r.atenciones_30d) || 0,
+                atenciones_90d: Number(r.atenciones_90d) || 0,
+                atenciones_180d: Number(r.atenciones_180d) || 0,
+                atenciones_365d: Number(r.atenciones_365d) || 0,
+                meses_activos: Number(r.meses_activos) || 1,
+                dias_atendidos: Number(r.dias_atendidos) || 1,
+                promedio_por_mes_activo: Math.round((Number(r.total_atenciones) || 0) / Math.max(1, Number(r.meses_activos) || 1)),
+                promedio_por_dia_atendido: Number(((Number(r.total_atenciones) || 0) / Math.max(1, Number(r.dias_atendidos) || 1)).toFixed(1)),
+                especialidades: [],
+                especialidad_principal: 'Sin especificar',
+                top_atenciones: [],
+                top_obras_sociales: [],
+                sedes: [],
+                historial_anual: [],
+            });
+        }
+
+        for (const r of espRes.recordset) {
+            const doc = doctorsMap.get(r.id_personal);
+            if (doc) doc.especialidades.push({ nombre: r.especialidad, cantidad: Number(r.cantidad) || 0 });
+        }
+        for (const doc of doctorsMap.values()) {
+            if (doc.especialidades.length > 0) doc.especialidad_principal = doc.especialidades[0].nombre;
+        }
+        for (const r of tipusRes.recordset) {
+            const doc = doctorsMap.get(r.id_personal);
+            if (!doc) continue;
+            const cant = Number(r.cantidad) || 0;
+            doc.top_atenciones.push({
+                nombre: r.tipo_atencion,
+                cantidad: cant,
+                porcentaje: doc.total_atenciones > 0 ? Number(((cant / doc.total_atenciones) * 100).toFixed(1)) : 0,
+                ultima_vez: formatDate(r.ultima_vez),
+            });
+        }
+        for (const r of osRes.recordset) {
+            const doc = doctorsMap.get(r.id_personal);
+            if (!doc) continue;
+            const cant = Number(r.cantidad) || 0;
+            doc.top_obras_sociales.push({
+                nombre: r.obra_social,
+                cantidad: cant,
+                porcentaje: doc.total_atenciones > 0 ? Number(((cant / doc.total_atenciones) * 100).toFixed(1)) : 0,
+            });
+        }
+        for (const r of sedeRes.recordset) {
+            const doc = doctorsMap.get(r.id_personal);
+            if (!doc) continue;
+            doc.sedes.push({
+                sede: CENTRO_MAP[r.id_centro] || `Centro ${r.id_centro}`,
+                cantidad: Number(r.cantidad) || 0,
+                ultima_vez: formatDate(r.ultima_vez),
+            });
+        }
+        for (const r of timelineRes.recordset) {
+            const doc = doctorsMap.get(r.id_personal);
+            if (doc) doc.historial_anual.push({ anio: Number(r.anio), cantidad: Number(r.cantidad) || 0 });
+        }
+
+        const allDoctors = Array.from(doctorsMap.values());
+        const payload = {
+            generated_at: new Date().toISOString(),
+            source: 'SALUS SQL Server (128.223.16.29:2450)',
+            total_profesionales: allDoctors.length,
+            profesionales: allDoctors,
+        };
+
+        const outPath = resolve(__dirname, '..', 'public', 'data', 'padron_medicos_salus.json');
+        fs.mkdirSync(dirname(outPath), { recursive: true });
+        fs.writeFileSync(outPath, JSON.stringify(payload));
+
+        res.json({ success: true, total_profesionales: allDoctors.length });
+    } catch (err) {
+        console.error('❌ Error sincronizando padrón médicos:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
