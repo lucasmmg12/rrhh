@@ -1144,3 +1144,96 @@ a {
     background: #f1f5f9;
   }
 }
+
+
+/* ============================================================
+   GLOBAL INTERACTIVE SHADER CARDS (SPOTLIGHT + HOLOGRAPHIC BORDER + 3D TILT)
+   ============================================================ */
+.shader-card {
+  position: relative;
+  isolation: isolate;
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+  --rx: 0deg;
+  --ry: 0deg;
+  --glare-angle: 135deg;
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease,
+    border-color 0.25s ease !important;
+  will-change: transform, box-shadow;
+}
+
+/* 1. Capa de Iluminación Superficial (Radial Shader Spotlight + Specular Glare) */
+.shader-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background:
+    radial-gradient(
+      380px circle at var(--mouse-x) var(--mouse-y),
+      rgba(14, 165, 233, 0.13) 0%,
+      rgba(30, 95, 166, 0.08) 35%,
+      rgba(124, 58, 237, 0.05) 62%,
+      transparent 82%
+    ),
+    linear-gradient(
+      var(--glare-angle),
+      rgba(255, 255, 255, 0.35) 0%,
+      transparent 55%
+    );
+}
+
+/* 2. Capa de Borde Luminoso Reactivo (Shader Border Beam) */
+.shader-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.75px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  background: radial-gradient(
+    260px circle at var(--mouse-x) var(--mouse-y),
+    #0ea5e9 0%,
+    #1E5FA6 42%,
+    #7c3aed 72%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.shader-card--hovered::before,
+.shader-card:hover::before {
+  opacity: 1;
+}
+
+.shader-card--hovered::after,
+.shader-card:hover::after {
+  opacity: 1;
+}
+
+/* Asegurar que el contenido interno quede por encima del shader de fondo */
+.shader-card > * {
+  position: relative;
+  z-index: 3;
+}
+
+/* 3. Efecto 3D Micro-Tilt para tarjetas KPI, módulos y fichas */
+.shader-card--tiltable.shader-card--hovered {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-3px) scale(1.01) !important;
+  box-shadow:
+    0 14px 28px -8px rgba(30, 95, 166, 0.16),
+    0 6px 14px -4px rgba(14, 165, 233, 0.1) !important;
+}

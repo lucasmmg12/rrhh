@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Stethoscope, Search, Download, RefreshCw, Clock, CheckCircle2,
-  AlertTriangle, XCircle, Calendar, Building2, Award, CreditCard,
-  Activity, Users, Phone, Mail, Hash, ChevronLeft, ChevronRight,
-  BarChart3, Table2, GitCommitHorizontal, Eye, Filter,
+  XCircle, Activity, Users, ChevronLeft, ChevronRight,
+  BarChart3, Table2, GitCommitHorizontal, Eye, ArrowRight,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -13,11 +12,7 @@ import {
 import { supabase } from '../supabaseClient';
 import './padron-medicos.css';
 
-const TIMELINE_MIN_YEAR = 2016;
-const TIMELINE_MAX_YEAR = 2026;
-const TIMELINE_SPAN_MS =
-  new Date(`${TIMELINE_MAX_YEAR}-12-31T23:59:59`).getTime() -
-  new Date(`${TIMELINE_MIN_YEAR}-01-01T00:00:00`).getTime();
+const YEARS_LIST = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026];
 
 function formatDateAR(isoStr) {
   if (!isoStr) return '—';
@@ -26,6 +21,32 @@ function formatDateAR(isoStr) {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
   return isoStr;
+}
+
+function getInitials(nombre) {
+  if (!nombre) return 'MD';
+  const cleaned = String(nombre).replace(/[,]/g, ' ').trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return cleaned.slice(0, 2).toUpperCase();
+}
+
+function formatCompactCount(n) {
+  if (!n || n <= 0) return '·';
+  if (n >= 10000) return `${(n / 1000).toFixed(0)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+function shortenSedeName(sede) {
+  if (!sede) return '';
+  if (sede === 'SANTA FE') return 'Santa Fe';
+  if (sede === 'SAN LUIS SUR') return 'Sede 1 (Sur)';
+  if (sede === 'SAN LUIS NORTE') return 'Sede 2 (Norte)';
+  if (sede === 'SAN LUIS SEDE 3') return 'Sede 3';
+  return sede;
 }
 
 function formatAntiguedad(primeraIso, ultimaIso) {
@@ -39,46 +60,129 @@ function formatAntiguedad(primeraIso, ultimaIso) {
   if (years > 0 && months > 0) return `${years}a ${months}m`;
   if (years > 0) return `${years} ${years === 1 ? 'año' : 'años'}`;
   if (months > 0) return `${months} ${months === 1 ? 'mes' : 'meses'}`;
-  return `${diffDays} días`;
+  return `${diffDays}d`;
 }
 
 function formatTiempoSinAtender(dias) {
   if (dias === null || dias === undefined) return '—';
-  if (dias === 0) return 'Hoy';
-  if (dias === 1) return 'Ayer (1 día)';
+  if (dias === 0) return 'Atendió hoy';
+  if (dias === 1) return 'Hace 1 día';
   if (dias < 30) return `Hace ${dias} días`;
   if (dias < 365) {
     const m = Math.floor(dias / 30);
     return `Hace ${m} ${m === 1 ? 'mes' : 'meses'} (${dias}d)`;
   }
   const y = (dias / 365).toFixed(1);
-  return `Hace ${y} años (${dias}d)`;
+  return `Hace ${y} años`;
 }
 
-function getTimelinePosition(primeraIso, ultimaIso) {
-  const minMs = new Date(`${TIMELINE_MIN_YEAR}-01-01T00:00:00`).getTime();
-  const maxMs = new Date(`${TIMELINE_MAX_YEAR}-12-31T23:59:59`).getTime();
+// Normalización para cruce dinámico entre nuevos_prestadores y padrón SALUS
+function normalizeStr(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\bde\s+[a-z]+$/g, ' ')
+    .replace(/\b(dra?|lic|med|esp|mg|magister)\b\.?/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  const dStart = primeraIso ? new Date(primeraIso + 'T00:00:00').getTime() : minMs;
-  const dEnd = ultimaIso ? new Date(ultimaIso + 'T00:00:00').getTime() : dStart;
+function getTokens(s) {
+  const stop = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e']);
+  return normalizeStr(s)
+    .split(' ')
+    .filter(t => t.length > 1 && !stop.has(t));
+}
 
-  const clampedStart = Math.max(minMs, Math.min(maxMs, dStart));
-  const clampedEnd = Math.max(clampedStart, Math.min(maxMs, dEnd));
+function extractAllNumbers(matStr) {
+  if (!matStr) return [];
+  return String(matStr).match(/\d{3,6}/g) || [];
+}
 
-  const leftPct = ((clampedStart - minMs) / TIMELINE_SPAN_MS) * 100;
-  const widthPct = Math.max(1.5, ((clampedEnd - clampedStart) / TIMELINE_SPAN_MS) * 100);
+const COMMON_COMPOUND_NAMES = new Set(['maria', 'jose', 'juan', 'ana', 'luis', 'carlos']);
 
-  return {
-    left: `${Math.min(98, Math.max(0, leftPct)).toFixed(2)}%`,
-    width: `${Math.min(100 - leftPct, widthPct).toFixed(2)}%`,
-  };
+function matchDoctorWithPrestador(doc, prestadoresList) {
+  if (doc.es_generico || !Array.isArray(prestadoresList)) return null;
+  const docNums = extractAllNumbers(doc.matricula);
+  const rawParts = String(doc.nombre || '').split(',');
+  const surnameTokens = getTokens(rawParts[0] || '');
+  const givenTokens = getTokens(rawParts[1] || '');
+  const docAllTokens = [...surnameTokens, ...givenTokens];
+  if (surnameTokens.length === 0) return null;
+
+  const primarySurname = surnameTokens[0];
+  const docMP4 = docNums.filter(n => n.length === 4);
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const p of prestadoresList) {
+    if (!p.foto_url) continue;
+    const pTokens = getTokens(p.nombre_completo);
+    if (pTokens.length < 2 || !pTokens.includes(primarySurname)) continue;
+
+    const pNums = extractAllNumbers(p.matricula);
+    const pMP4 = pNums.filter(n => n.length === 4);
+    const mpOverlap = docNums.some(n => pNums.includes(n));
+
+    if (docMP4.length > 0 && pMP4.length > 0 && !mpOverlap) continue;
+
+    const pGivenCandidates = pTokens.filter(t => !surnameTokens.includes(t));
+    let score = 0;
+
+    if (mpOverlap) {
+      if (pGivenCandidates.length > 0 && givenTokens.length > 0) {
+        if (pGivenCandidates.some(t => givenTokens.includes(t))) score = 100;
+      } else {
+        score = 95;
+      }
+    } else if (pTokens.every(t => docAllTokens.includes(t))) {
+      const distP = pGivenCandidates.filter(t => !COMMON_COMPOUND_NAMES.has(t));
+      const distDoc = givenTokens.filter(t => !COMMON_COMPOUND_NAMES.has(t));
+      if (distP.length > 0) {
+        if (distP.every(t => givenTokens.includes(t))) score = 70 + pTokens.length * 5;
+      } else if (distDoc.length === 0 || pTokens.filter(t => surnameTokens.includes(t)).length >= 2) {
+        score = 70 + pTokens.length * 5;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = p;
+    }
+  }
+  return bestMatch;
+}
+
+// Componente Avatar con Foto Real de Prestadores o Iniciales
+function DoctorAvatar({ doc, size = 38 }) {
+  const [imgError, setImgError] = useState(false);
+  const hasPhoto = Boolean(doc?.foto_url) && !imgError;
+
+  return (
+    <div
+      className={`pm-doc-avatar ${hasPhoto ? 'pm-doc-avatar--photo' : ''}`}
+      style={{ width: size, height: size, borderRadius: size > 50 ? '14px' : '10px', fontSize: size > 50 ? '1.1rem' : '0.76rem' }}
+    >
+      {hasPhoto ? (
+        <img
+          src={doc.foto_url}
+          alt={doc.nombre}
+          loading="lazy"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        getInitials(doc?.nombre)
+      )}
+    </div>
+  );
 }
 
 export default function PadronMedicosApp() {
   const [profesionales, setProfesionales] = useState([]);
-  const [metaInfo, setMetaInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('timeline'); // 'timeline' | 'directorio' | 'analitica'
 
   // Filtros
@@ -87,12 +191,13 @@ export default function PadronMedicosApp() {
   const [filterEspecialidad, setFilterEspecialidad] = useState('');
   const [filterSede, setFilterSede] = useState('');
   const [filterObraSocial, setFilterObraSocial] = useState('');
+  const [onlyWithPhoto, setOnlyWithPhoto] = useState(false);
   const [includeGenericos, setIncludeGenericos] = useState(false);
-  const [sortBy, setSortBy] = useState('ultima_desc'); // 'ultima_desc' | 'ultima_asc' | 'total_desc' | 'primera_asc' | 'nombre_asc'
+  const [sortBy, setSortBy] = useState('ultima_desc');
 
-  // Paginación para fluidez con 1,242 médicos
+  // Paginación
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 35;
+  const PAGE_SIZE = 30;
 
   // Médico seleccionado para Ficha 360°
   const [selectedDoctor, setSelectedDoctor] = useState(null);
@@ -103,54 +208,54 @@ export default function PadronMedicosApp() {
 
   async function loadPadron() {
     setLoading(true);
+    let baseDocs = [];
     try {
-      // 1. Intentar cargar el JSON pre-extraído de SALUS (ultra rápido, 1,242 médicos completos)
       const res = await fetch('/data/padron_medicos_salus.json');
       if (res.ok) {
         const json = await res.json();
-        setProfesionales(json.profesionales || []);
-        setMetaInfo({
-          generated_at: json.generated_at,
-          source: json.source,
+        baseDocs = json.profesionales || [];
+      }
+    } catch (err) {
+      console.warn('Intentando cargar padrón desde Supabase...', err);
+    }
+
+    if (baseDocs.length === 0) {
+      try {
+        const { data, error } = await supabase
+          .from('padron_medicos_salus')
+          .select('*')
+          .order('total_atenciones', { ascending: false });
+        if (!error && data && data.length > 0) {
+          baseDocs = data;
+        }
+      } catch (err) {
+        console.error('Error cargando padron_medicos_salus:', err);
+      }
+    }
+
+    // Cruzar en vivo con nuevos_prestadores para mapear fotos recién subidas
+    try {
+      const { data: prestadoresData } = await supabase
+        .from('nuevos_prestadores')
+        .select('nombre_completo, matricula, foto_url, comentarios')
+        .not('foto_url', 'is', null);
+
+      if (prestadoresData && prestadoresData.length > 0) {
+        baseDocs = baseDocs.map(doc => {
+          if (doc.foto_url) return doc;
+          const match = matchDoctorWithPrestador(doc, prestadoresData);
+          if (match) {
+            return { ...doc, foto_url: match.foto_url, prestador_comentarios: match.comentarios || '' };
+          }
+          return doc;
         });
-        setLoading(false);
-        return;
       }
     } catch (err) {
-      console.warn('Error cargando JSON local de SALUS, intentando Supabase...', err);
+      console.warn('No se pudo cruzar fotos en vivo:', err);
     }
 
-    // 2. Fallback a tabla Supabase padron_medicos_salus si existe
-    try {
-      const { data, error } = await supabase
-        .from('padron_medicos_salus')
-        .select('*')
-        .order('total_atenciones', { ascending: false });
-      if (!error && data && data.length > 0) {
-        setProfesionales(data);
-      }
-    } catch (err) {
-      console.error('Error cargando padron_medicos_salus:', err);
-    }
+    setProfesionales(baseDocs);
     setLoading(false);
-  }
-
-  async function handleSyncSalus() {
-    setSyncing(true);
-    try {
-      const resp = await fetch('http://localhost:3457/api/rrhh/sync/padron-medicos');
-      const data = await resp.json();
-      if (data.success) {
-        await loadPadron();
-        alert(`Sincronización con SALUS completada: ${data.total_profesionales} profesionales actualizados.`);
-      } else {
-        alert('Error al sincronizar con SALUS: ' + (data.error || 'Verificar que RRHH Sync Server esté corriendo en puerto 3457'));
-      }
-    } catch {
-      alert('Para actualizar en vivo desde SQL Server SALUS, asegurate de tener ejecutando "Iniciar RRHH Sync.bat" (puerto 3457). Actualmente estás visualizando la base completa extraída de SALUS.');
-    } finally {
-      setSyncing(false);
-    }
   }
 
   // Filtrar base (nominales vs genéricos)
@@ -196,6 +301,7 @@ export default function PadronMedicosApp() {
     const inactivos = baseList.filter(p => p.estado_actividad === 'Inactivo').length;
     const totalAtenciones = baseList.reduce((acc, p) => acc + (p.total_atenciones || 0), 0);
     const atendieron30d = baseList.filter(p => (p.atenciones_30d || 0) > 0).length;
+    const conFoto = baseList.filter(p => Boolean(p.foto_url)).length;
 
     return {
       total,
@@ -204,6 +310,7 @@ export default function PadronMedicosApp() {
       inactivos,
       totalAtenciones,
       atendieron30d,
+      conFoto,
       pctActivos: total > 0 ? ((activos / total) * 100).toFixed(1) : '0.0',
     };
   }, [baseList]);
@@ -213,6 +320,7 @@ export default function PadronMedicosApp() {
     const q = searchTerm.toLowerCase().trim();
 
     const list = baseList.filter(p => {
+      if (onlyWithPhoto && !p.foto_url) return false;
       if (filterEstado && p.estado_actividad !== filterEstado) return false;
       if (filterEspecialidad) {
         const hasEsp =
@@ -252,17 +360,15 @@ export default function PadronMedicosApp() {
       if (sortBy === 'nombre_asc') {
         return (a.nombre || '').localeCompare(b.nombre || '', 'es');
       }
-      // default: total_desc
       return (b.total_atenciones || 0) - (a.total_atenciones || 0);
     });
 
     return sorted;
-  }, [baseList, filterEstado, filterEspecialidad, filterSede, filterObraSocial, searchTerm, sortBy]);
+  }, [baseList, onlyWithPhoto, filterEstado, filterEspecialidad, filterSede, filterObraSocial, searchTerm, sortBy]);
 
-  // Resetear página al cambiar filtros
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, filterEstado, filterEspecialidad, filterSede, filterObraSocial, includeGenericos, sortBy]);
+  }, [searchTerm, onlyWithPhoto, filterEstado, filterEspecialidad, filterSede, filterObraSocial, includeGenericos, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / PAGE_SIZE));
   const paginatedDoctors = useMemo(() => {
@@ -270,7 +376,7 @@ export default function PadronMedicosApp() {
     return filteredDoctors.slice(start, start + PAGE_SIZE);
   }, [filteredDoctors, page]);
 
-  // Analítica por Especialidad (Activos vs Baja Frecuencia vs Inactivos)
+  // Analítica por Especialidad
   const analyticsEspecialidades = useMemo(() => {
     const map = {};
     baseList.forEach(p => {
@@ -345,7 +451,7 @@ export default function PadronMedicosApp() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '65vh', gap: '0.75rem', color: '#64748b' }}>
         <RefreshCw size={30} className="animate-spin" style={{ color: '#1E5FA6' }} />
-        <p style={{ fontSize: '0.9rem', fontWeight: 600 }}>Cargando Padrón Histórico de Médicos desde SALUS...</p>
+        <p style={{ fontSize: '0.9rem', fontWeight: 600 }}>Cargando Padrón Histórico de Médicos...</p>
       </div>
     );
   }
@@ -357,15 +463,10 @@ export default function PadronMedicosApp() {
         <div>
           <h2 className="pm-header__title">
             <Stethoscope size={24} style={{ color: '#1E5FA6' }} />
-            Padrón Histórico y Línea de Tiempo de Médicos (SALUS)
+            Padrón Histórico y Línea de Tiempo de Médicos
           </h2>
           <p className="pm-header__subtitle">
             Base unificada de todos los profesionales que han atendido en el Sanatorio: estado de actividad, fechas extremas de atención, Top 15 prácticas y Obras Sociales más recibidas.
-            {metaInfo?.generated_at && (
-              <span style={{ marginLeft: '0.5rem', color: '#0284c7', fontWeight: 600 }}>
-                • Fuente: {metaInfo.source} ({formatDateAR(metaInfo.generated_at)})
-              </span>
-            )}
           </p>
         </div>
 
@@ -392,20 +493,10 @@ export default function PadronMedicosApp() {
             <Download size={15} />
             Exportar Padrón Excel ({filteredDoctors.length})
           </button>
-
-          <button
-            type="button"
-            className="pm-btn pm-btn--primary"
-            onClick={handleSyncSalus}
-            disabled={syncing}
-          >
-            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Sincronizando SALUS...' : 'Actualizar desde SALUS'}
-          </button>
         </div>
       </div>
 
-      {/* ─── TARJETAS KPI INTERACTIVAS (CLIC PARA FILTRAR POR ESTADO) ─── */}
+      {/* ─── TARJETAS KPI INTERACTIVAS ─── */}
       <div className="pm-kpi-grid">
         <div
           className={`pm-kpi-card ${filterEstado === '' ? 'pm-kpi-card--selected' : ''}`}
@@ -413,7 +504,7 @@ export default function PadronMedicosApp() {
           title="Ver todos los médicos"
         >
           <div>
-            <div className="pm-kpi-card__label">Total Médicos (SALUS)</div>
+            <div className="pm-kpi-card__label">Total Médicos</div>
             <div className="pm-kpi-card__value">{kpis.total.toLocaleString('es-AR')}</div>
             <div className="pm-kpi-card__sub">
               Han atendido en el Sanatorio
@@ -506,7 +597,7 @@ export default function PadronMedicosApp() {
             onClick={() => setActiveTab('timeline')}
           >
             <GitCommitHorizontal size={16} />
-            Línea de Tiempo (Desde — Hasta cuándo atendió)
+            Línea de Tiempo Anual (Desde — Hasta)
           </button>
           <button
             type="button"
@@ -526,8 +617,24 @@ export default function PadronMedicosApp() {
           </button>
         </div>
 
-        <div style={{ fontSize: '0.77rem', color: '#64748b', fontWeight: 500 }}>
-          💡 Hacé clic sobre cualquier médico para abrir su <strong>Ficha 360°</strong> (Top 15 Atenciones, Obras Sociales, Sedes e Historial Anual).
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', fontSize: '0.74rem', color: '#475569' }}>
+          {activeTab === 'timeline' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontWeight: 700, color: '#334155' }}>Intensidad anual:</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: '#f8fafc', border: '1px solid #cbd5e1' }} /> Sin atención
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: '#e0f2fe', border: '1px solid #7dd3fc' }} /> &lt; 200
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: '#93c5fd' }} /> 200–999
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: '#1E5FA6' }} /> 1.000+ atenciones
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -578,10 +685,10 @@ export default function PadronMedicosApp() {
             onChange={e => setFilterSede(e.target.value)}
           >
             <option value="">Todas las sedes</option>
-            <option value="SAN LUIS SUR">🏥 SAN LUIS SUR (Sede 1)</option>
-            <option value="SANTA FE">📍 SANTA FE</option>
-            <option value="SAN LUIS NORTE">🏥 SAN LUIS NORTE (Sede 2)</option>
-            <option value="SAN LUIS SEDE 3">🏥 SAN LUIS SEDE 3</option>
+            <option value="SAN LUIS SUR">🏥 Sede 1 (San Luis Sur)</option>
+            <option value="SANTA FE">📍 Sede Santa Fe</option>
+            <option value="SAN LUIS NORTE">🏥 Sede 2 (San Luis Norte)</option>
+            <option value="SAN LUIS SEDE 3">🏥 Sede 3 (San Luis 463)</option>
           </select>
 
           <select
@@ -589,7 +696,7 @@ export default function PadronMedicosApp() {
             value={filterObraSocial}
             onChange={e => setFilterObraSocial(e.target.value)}
           >
-            <option value="">Filtrar por Obra Social recibida...</option>
+            <option value="">Obra Social recibida...</option>
             {allObrasSociales.map(os => (
               <option key={os} value={os}>{os}</option>
             ))}
@@ -608,140 +715,189 @@ export default function PadronMedicosApp() {
             <option value="nombre_asc">Ordenar: Alfabético (A → Z)</option>
           </select>
 
-          {(searchTerm || filterEstado || filterEspecialidad || filterSede || filterObraSocial) && (
+          <button
+            type="button"
+            className="pm-btn"
+            onClick={() => setOnlyWithPhoto(prev => !prev)}
+            style={{
+              background: onlyWithPhoto ? '#1E5FA6' : '#f8fafc',
+              color: onlyWithPhoto ? '#ffffff' : '#334155',
+              borderColor: onlyWithPhoto ? '#1E5FA6' : '#cbd5e1',
+            }}
+            title="Filtrar médicos que tienen fotografía cargada en Prestadores"
+          >
+            📷 Con foto ({kpis.conFoto})
+          </button>
+
+          {(searchTerm || onlyWithPhoto || filterEstado || filterEspecialidad || filterSede || filterObraSocial) && (
             <button
               type="button"
               className="pm-btn pm-btn--secondary"
               onClick={() => {
                 setSearchTerm('');
+                setOnlyWithPhoto(false);
                 setFilterEstado('');
                 setFilterEspecialidad('');
                 setFilterSede('');
                 setFilterObraSocial('');
               }}
             >
-              Limpiar filtros
+              Limpiar
             </button>
           )}
         </div>
       )}
 
       {/* ============================================================
-          VISTA 1: LÍNEA DE TIEMPO DE ATENCIÓN MÉDICA (DESDE — HASTA)
+          VISTA 1 MEJORADA: MATRIZ ANUAL Y LÍNEA DE TIEMPO (2016–2026)
          ============================================================ */}
       {activeTab === 'timeline' && (
-        <div className="pm-timeline-card">
-          {/* Escala de años superior */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '270px 150px 1fr 140px',
-            gap: '1rem',
-            padding: '0.5rem 0.75rem 0.75rem',
-            borderBottom: '2px solid #e2e8f0',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            color: '#64748b',
-            textTransform: 'uppercase',
-          }}>
-            <div>Médico / Especialidad</div>
-            <div>Estado / Última vez</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 4px' }}>
-              {Array.from({ length: TIMELINE_MAX_YEAR - TIMELINE_MIN_YEAR + 1 }, (_, i) => TIMELINE_MIN_YEAR + i).map(yr => (
-                <span key={yr}>{yr}</span>
-              ))}
-            </div>
-            <div style={{ textAlign: 'right' }}>Período (Desde — Hasta)</div>
+        <div className="pm-matrix-card">
+          <div className="pm-matrix-scroll">
+            <table className="pm-matrix-table">
+              <thead>
+                <tr>
+                  <th style={{ minWidth: '250px' }}>Médico / Especialidad</th>
+                  <th style={{ minWidth: '150px' }}>Estado / Última vez</th>
+                  {YEARS_LIST.map(yr => (
+                    <th key={yr} className="pm-year-th">{yr}</th>
+                  ))}
+                  <th style={{ minWidth: '215px', textAlign: 'right' }}>Período (Desde → Hasta)</th>
+                  <th style={{ width: '90px', textAlign: 'center' }}>Detalle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedDoctors.length === 0 ? (
+                  <tr>
+                    <td colSpan={16} style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                      No se encontraron médicos con los criterios seleccionados.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedDoctors.map(doc => {
+                    const statusClass =
+                      doc.estado_actividad === 'Activo'
+                        ? 'pm-status--activo'
+                        : doc.estado_actividad === 'Baja Frecuencia'
+                        ? 'pm-status--baja'
+                        : 'pm-status--inactivo';
+
+                    const dotColor =
+                      doc.estado_actividad === 'Activo'
+                        ? '#16a34a'
+                        : doc.estado_actividad === 'Baja Frecuencia'
+                        ? '#d97706'
+                        : '#dc2626';
+
+                    const yearMap = {};
+                    (doc.historial_anual || []).forEach(h => {
+                      yearMap[h.anio] = h.cantidad;
+                    });
+
+                    return (
+                      <tr
+                        key={doc.id_personal}
+                        onClick={() => setSelectedDoctor(doc)}
+                        title="Hacé clic para ver la Ficha 360° completa del médico"
+                      >
+                        {/* Col 1: Médico + Avatar + Especialidad */}
+                        <td>
+                          <div className="pm-doc-cell">
+                            <DoctorAvatar doc={doc} size={38} />
+                            <div style={{ minWidth: 0 }}>
+                              <div className="pm-doc-name" title={doc.nombre}>
+                                {doc.nombre}
+                              </div>
+                              <div className="pm-doc-meta">
+                                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1E5FA6' }}>
+                                  {doc.especialidad_principal}
+                                </span>
+                                {doc.matricula && (
+                                  <span className="pm-meta-chip">MP {doc.matricula}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Col 2: Estado + Hace cuánto */}
+                        <td>
+                          <span className={`pm-status ${statusClass}`}>
+                            <span className="pm-status__dot" style={{ background: dotColor }} />
+                            {doc.estado_actividad}
+                          </span>
+                          <div style={{ fontSize: '0.71rem', color: '#475569', marginTop: '4px', fontWeight: 600 }}>
+                            {formatTiempoSinAtender(doc.dias_sin_atender)}
+                          </div>
+                        </td>
+
+                        {/* Cols 3..13: Celdas Año por Año (2016 a 2026) perfectamente alineadas */}
+                        {YEARS_LIST.map(yr => {
+                          const count = yearMap[yr] || 0;
+                          const boxClass =
+                            count >= 1000
+                              ? 'pm-year-box--high'
+                              : count >= 200
+                              ? 'pm-year-box--mid'
+                              : count > 0
+                              ? 'pm-year-box--low'
+                              : 'pm-year-box--empty';
+
+                          return (
+                            <td key={yr} className="pm-year-td">
+                              <div
+                                className={`pm-year-box ${boxClass}`}
+                                title={`${doc.nombre} — Año ${yr}: ${count.toLocaleString('es-AR')} atenciones`}
+                              >
+                                {formatCompactCount(count)}
+                              </div>
+                            </td>
+                          );
+                        })}
+
+                        {/* Col 14: Período (Desde → Hasta) y Total */}
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="pm-period-box">
+                            <span style={{ color: '#475569', fontWeight: 600 }}>
+                              {formatDateAR(doc.primera_atencion)}
+                            </span>
+                            <ArrowRight size={12} style={{ color: '#94a3b8' }} />
+                            <strong style={{ color: doc.estado_actividad === 'Activo' ? '#15803d' : '#b91c1c' }}>
+                              {formatDateAR(doc.ultima_atencion)}
+                            </strong>
+                          </div>
+                          <div style={{ fontSize: '0.69rem', color: '#64748b', marginTop: '3px' }}>
+                            <strong>{doc.total_atenciones.toLocaleString('es-AR')}</strong> atenciones • <strong>{formatAntiguedad(doc.primera_atencion, doc.ultima_atencion)}</strong>
+                          </div>
+                        </td>
+
+                        {/* Col 15: Botón Ficha 360° */}
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="pm-btn pm-btn--secondary"
+                            style={{ padding: '0.32rem 0.6rem', fontSize: '0.72rem', color: '#1E5FA6', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedDoctor(doc);
+                            }}
+                          >
+                            <Eye size={13} />
+                            360°
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-
-          {paginatedDoctors.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-              No se encontraron médicos con los criterios seleccionados.
-            </div>
-          ) : (
-            paginatedDoctors.map(doc => {
-              const pos = getTimelinePosition(doc.primera_atencion, doc.ultima_atencion);
-              const barColor =
-                doc.estado_actividad === 'Activo'
-                  ? 'linear-gradient(90deg, #1E5FA6, #16A34A)'
-                  : doc.estado_actividad === 'Baja Frecuencia'
-                  ? 'linear-gradient(90deg, #0284C7, #D97706)'
-                  : 'linear-gradient(90deg, #94A3B8, #DC2626)';
-
-              const statusClass =
-                doc.estado_actividad === 'Activo'
-                  ? 'pm-status--activo'
-                  : doc.estado_actividad === 'Baja Frecuencia'
-                  ? 'pm-status--baja'
-                  : 'pm-status--inactivo';
-
-              return (
-                <div
-                  key={doc.id_personal}
-                  className="pm-timeline-row"
-                  onClick={() => setSelectedDoctor(doc)}
-                  title="Clic para abrir Ficha 360° del médico"
-                >
-                  {/* Col 1: Nombre y Especialidad */}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.83rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {doc.nombre}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#1E5FA6', fontWeight: 600, display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                      <span>{doc.especialidad_principal}</span>
-                      {doc.matricula && <span style={{ color: '#64748b' }}>• MP {doc.matricula}</span>}
-                    </div>
-                  </div>
-
-                  {/* Col 2: Badge Estado + Hace cuánto */}
-                  <div>
-                    <span className={`pm-status ${statusClass}`}>
-                      {doc.estado_actividad}
-                    </span>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '3px', fontWeight: 500 }}>
-                      {formatTiempoSinAtender(doc.dias_sin_atender)}
-                    </div>
-                  </div>
-
-                  {/* Col 3: Barra de línea de tiempo */}
-                  <div>
-                    <div className="pm-timeline-track">
-                      <div
-                        className="pm-timeline-bar"
-                        style={{
-                          left: pos.left,
-                          width: pos.width,
-                          background: barColor,
-                        }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#64748b', marginTop: '3px' }}>
-                      <span>
-                        <strong>{doc.total_atenciones.toLocaleString('es-AR')}</strong> atenciones ({doc.pacientes_unicos.toLocaleString('es-AR')} pac.)
-                      </span>
-                      <span>
-                        Trayectoria: <strong>{formatAntiguedad(doc.primera_atencion, doc.ultima_atencion)}</strong> ({doc.meses_activos} meses activos)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Col 4: Fechas Desde — Hasta */}
-                  <div style={{ textAlign: 'right', fontSize: '0.74rem' }}>
-                    <div style={{ color: '#475569' }}>
-                      <span style={{ color: '#94a3b8' }}>Desde:</span> <strong>{formatDateAR(doc.primera_atencion)}</strong>
-                    </div>
-                    <div style={{ color: doc.estado_actividad === 'Activo' ? '#15803d' : '#b91c1c', fontWeight: 700 }}>
-                      <span style={{ color: '#94a3b8', fontWeight: 400 }}>Última:</span> {formatDateAR(doc.ultima_atencion)}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
 
           {/* Paginador */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            paddingTop: '1rem', marginTop: '0.5rem', borderTop: '1px solid #e2e8f0',
+            padding: '0.9rem 1.25rem', borderTop: '1px solid #e2e8f0', background: '#f8fafc',
           }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
               Mostrando <strong>{(page - 1) * PAGE_SIZE + 1}</strong> a <strong>{Math.min(page * PAGE_SIZE, filteredDoctors.length)}</strong> de <strong>{filteredDoctors.length}</strong> profesionales
@@ -772,7 +928,7 @@ export default function PadronMedicosApp() {
       )}
 
       {/* ============================================================
-          VISTA 2: BASE DE DATOS DE MÉDICOS (TABLA COMPLETA)
+          VISTA 2 MEJORADA: BASE DE DATOS DE MÉDICOS (TABLA COMPACTA Y LIMPIA)
          ============================================================ */}
       {activeTab === 'directorio' && (
         <div className="pm-table-card">
@@ -780,16 +936,13 @@ export default function PadronMedicosApp() {
             <table className="pm-table">
               <thead>
                 <tr>
-                  <th>Médico / Matrícula</th>
-                  <th>Especialidades</th>
-                  <th>Estado Actual</th>
-                  <th>Desde (1ª Atención)</th>
-                  <th>Hasta (Últ. Atención)</th>
-                  <th>Tiempo sin atender</th>
-                  <th style={{ textAlign: 'right' }}>Total Atenciones</th>
-                  <th style={{ textAlign: 'right' }}>Pacientes Únicos</th>
-                  <th>Sedes</th>
-                  <th>Práctica #1 / Obra Social #1</th>
+                  <th>Médico / Identificación</th>
+                  <th>Especialidad</th>
+                  <th>Estado y Última Atención</th>
+                  <th>Período de Atención (Desde → Hasta)</th>
+                  <th style={{ textAlign: 'right' }}>Volumen Histórico</th>
+                  <th>Sedes de Atención</th>
+                  <th>Práctica #1 y Obra Social #1</th>
                   <th style={{ textAlign: 'center' }}>Ficha 360°</th>
                 </tr>
               </thead>
@@ -802,103 +955,136 @@ export default function PadronMedicosApp() {
                       ? 'pm-status--baja'
                       : 'pm-status--inactivo';
 
+                  const dotColor =
+                    doc.estado_actividad === 'Activo'
+                      ? '#16a34a'
+                      : doc.estado_actividad === 'Baja Frecuencia'
+                      ? '#d97706'
+                      : '#dc2626';
+
                   const topPrac = doc.top_atenciones?.[0];
                   const topOS = doc.top_obras_sociales?.[0];
 
                   return (
                     <tr key={doc.id_personal} onClick={() => setSelectedDoctor(doc)}>
+                      {/* Col 1: Avatar + Nombre en 1 línea + Chips MP / DNI */}
                       <td>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{doc.nombre}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                          {doc.matricula ? `MP: ${doc.matricula}` : 'Sin MP'}
-                          {doc.nif ? ` • DNI/CUIT: ${doc.nif}` : ''}
+                        <div className="pm-doc-cell">
+                          <DoctorAvatar doc={doc} size={38} />
+                          <div>
+                            <div className="pm-doc-name" title={doc.nombre}>
+                              {doc.nombre}
+                            </div>
+                            <div className="pm-doc-meta">
+                              <span className="pm-meta-chip">
+                                {doc.matricula ? `MP ${doc.matricula}` : 'Sin MP'}
+                              </span>
+                              {doc.nif && (
+                                <span className="pm-meta-chip">DNI {doc.nif}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
+                      {/* Col 2: Especialidad en píldora sin partir líneas */}
                       <td>
-                        <span style={{
-                          display: 'inline-block',
-                          background: '#EBF2FA',
-                          color: '#1E5FA6',
-                          fontWeight: 700,
-                          fontSize: '0.72rem',
-                          padding: '0.18rem 0.5rem',
-                          borderRadius: '6px',
-                        }}>
-                          {doc.especialidad_principal}
-                        </span>
-                        {doc.especialidades?.length > 1 && (
-                          <span style={{ fontSize: '0.68rem', color: '#64748b', marginLeft: '0.35rem' }}>
-                            +{doc.especialidades.length - 1} más
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <span className="pm-esp-badge">
+                            {doc.especialidad_principal}
                           </span>
-                        )}
+                          {doc.especialidades?.length > 1 && (
+                            <span
+                              className="pm-meta-chip"
+                              title={doc.especialidades.slice(1).map(e => e.nombre).join(', ')}
+                            >
+                              +{doc.especialidades.length - 1}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
+                      {/* Col 3: Estado Actual + Hace cuánto */}
                       <td>
                         <span className={`pm-status ${statusClass}`}>
+                          <span className="pm-status__dot" style={{ background: dotColor }} />
                           {doc.estado_actividad}
                         </span>
-                      </td>
-
-                      <td style={{ fontWeight: 500 }}>{formatDateAR(doc.primera_atencion)}</td>
-
-                      <td style={{ fontWeight: 700, color: doc.estado_actividad === 'Activo' ? '#15803d' : '#0f172a' }}>
-                        {formatDateAR(doc.ultima_atencion)}
-                      </td>
-
-                      <td>
-                        <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 600 }}>
+                        <div style={{ fontSize: '0.71rem', color: '#64748b', marginTop: '3px', fontWeight: 600 }}>
                           {formatTiempoSinAtender(doc.dias_sin_atender)}
-                        </span>
+                        </div>
                       </td>
 
-                      <td style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
-                        {doc.total_atenciones.toLocaleString('es-AR')}
-                      </td>
-
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: '#475569' }}>
-                        {doc.pacientes_unicos.toLocaleString('es-AR')}
-                      </td>
-
+                      {/* Col 4: Período (Desde → Hasta) + Antigüedad */}
                       <td>
-                        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        <div className="pm-period-box">
+                          <span style={{ color: '#475569', fontWeight: 600 }}>
+                            {formatDateAR(doc.primera_atencion)}
+                          </span>
+                          <ArrowRight size={12} style={{ color: '#94a3b8' }} />
+                          <strong style={{ color: doc.estado_actividad === 'Activo' ? '#15803d' : '#0f172a' }}>
+                            {formatDateAR(doc.ultima_atencion)}
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: '0.69rem', color: '#64748b', marginTop: '3px' }}>
+                          Trayectoria: <strong>{formatAntiguedad(doc.primera_atencion, doc.ultima_atencion)}</strong> ({doc.meses_activos} meses activos)
+                        </div>
+                      </td>
+
+                      {/* Col 5: Volumen Histórico + Pacientes Únicos */}
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>
+                          {doc.total_atenciones.toLocaleString('es-AR')} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#64748b' }}>atenc.</span>
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>
+                          👥 {doc.pacientes_unicos.toLocaleString('es-AR')} pac. únicos (~{doc.promedio_por_mes_activo}/mes)
+                        </div>
+                      </td>
+
+                      {/* Col 6: Sedes en píldoras horizontales limpias */}
+                      <td>
+                        <div className="pm-sedes-row">
                           {(doc.sedes || []).map(s => (
                             <span
                               key={s.sede}
-                              style={{
-                                fontSize: '0.65rem',
-                                fontWeight: 700,
-                                padding: '0.15rem 0.4rem',
-                                borderRadius: '4px',
-                                background: s.sede === 'SANTA FE' ? '#ede9fe' : '#f1f5f9',
-                                color: s.sede === 'SANTA FE' ? '#6d28d9' : '#334155',
-                              }}
+                              className={`pm-sede-pill ${s.sede === 'SANTA FE' ? 'pm-sede-pill--sf' : 'pm-sede-pill--sl'}`}
+                              title={`${s.sede}: ${s.cantidad.toLocaleString('es-AR')} atenciones (Última: ${formatDateAR(s.ultima_vez)})`}
                             >
-                              {s.sede.replace('SAN LUIS ', 'SL ')}
+                              {shortenSedeName(s.sede)}
                             </span>
                           ))}
                         </div>
                       </td>
 
-                      <td style={{ maxWidth: '240px' }}>
-                        {topPrac && (
-                          <div style={{ fontSize: '0.72rem', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            🩺 <strong>{topPrac.nombre}</strong> ({topPrac.porcentaje}%)
-                          </div>
-                        )}
-                        {topOS && (
-                          <div style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            💳 {topOS.nombre} ({topOS.porcentaje}%)
-                          </div>
-                        )}
+                      {/* Col 7: Top Práctica #1 y Top Obra Social #1 bien alineados */}
+                      <td>
+                        <div className="pm-top-pair">
+                          {topPrac && (
+                            <div className="pm-top-line" title={`Práctica principal: ${topPrac.nombre} (${topPrac.cantidad.toLocaleString('es-AR')} atenciones)`}>
+                              <span className="pm-top-line__name">🩺 {topPrac.nombre}</span>
+                              <span className="pm-top-line__pct">{topPrac.porcentaje}%</span>
+                            </div>
+                          )}
+                          {topOS && (
+                            <div className="pm-top-line" title={`Obra Social principal: ${topOS.nombre} (${topOS.cantidad.toLocaleString('es-AR')} atenciones)`}>
+                              <span className="pm-top-line__name" style={{ color: '#475569', fontWeight: 500 }}>
+                                💳 {topOS.nombre}
+                              </span>
+                              <span className="pm-top-line__pct" style={{ background: '#f1f5f9', color: '#475569' }}>
+                                {topOS.porcentaje}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
+                      {/* Col 8: Botón Ver 360° */}
                       <td style={{ textAlign: 'center' }}>
                         <button
                           type="button"
                           className="pm-btn pm-btn--secondary"
-                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.73rem', color: '#1E5FA6', borderColor: '#bfdbfe', background: '#eff6ff' }}
-                          onClick={(e) => {
+                          style={{ padding: '0.35rem 0.7rem', fontSize: '0.73rem', color: '#1E5FA6', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                          onClick={e => {
                             e.stopPropagation();
                             setSelectedDoctor(doc);
                           }}
@@ -917,7 +1103,7 @@ export default function PadronMedicosApp() {
           {/* Paginador */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '0.9rem 1.25rem', borderTop: '1px solid #e2e8f0',
+            padding: '0.9rem 1.25rem', borderTop: '1px solid #e2e8f0', background: '#f8fafc',
           }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
               Mostrando <strong>{(page - 1) * PAGE_SIZE + 1}</strong> a <strong>{Math.min(page * PAGE_SIZE, filteredDoctors.length)}</strong> de <strong>{filteredDoctors.length}</strong> profesionales
@@ -999,7 +1185,7 @@ export default function PadronMedicosApp() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="anio" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(val) => Number(val).toLocaleString('es-AR')} />
+                  <Tooltip formatter={val => Number(val).toLocaleString('es-AR')} />
                   <Bar dataKey="totalAtenciones" name="Total Atenciones" fill="#0284C7" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -1016,28 +1202,31 @@ export default function PadronMedicosApp() {
           <div className="pm-modal" onClick={e => e.stopPropagation()}>
             {/* Header Ficha 360 */}
             <div className="pm-modal__header">
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>
-                    {selectedDoctor.nombre}
-                  </h3>
-                  <span className={`pm-status ${
-                    selectedDoctor.estado_actividad === 'Activo'
-                      ? 'pm-status--activo'
-                      : selectedDoctor.estado_actividad === 'Baja Frecuencia'
-                      ? 'pm-status--baja'
-                      : 'pm-status--inactivo'
-                  }`}>
-                    {selectedDoctor.estado_actividad}
-                  </span>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
+                <DoctorAvatar doc={selectedDoctor} size={64} />
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>
+                      {selectedDoctor.nombre}
+                    </h3>
+                    <span className={`pm-status ${
+                      selectedDoctor.estado_actividad === 'Activo'
+                        ? 'pm-status--activo'
+                        : selectedDoctor.estado_actividad === 'Baja Frecuencia'
+                        ? 'pm-status--baja'
+                        : 'pm-status--inactivo'
+                    }`}>
+                      {selectedDoctor.estado_actividad}
+                    </span>
+                  </div>
 
-                <div style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.92 }}>
-                  <span>🩺 <strong>{selectedDoctor.especialidad_principal}</strong></span>
-                  {selectedDoctor.matricula && <span>🪪 Matrícula: <strong>{selectedDoctor.matricula}</strong></span>}
-                  {selectedDoctor.nif && <span>🔢 DNI/CUIT: <strong>{selectedDoctor.nif}</strong></span>}
-                  {selectedDoctor.telefono && <span>📞 {selectedDoctor.telefono}</span>}
-                  {selectedDoctor.email && <span>✉️ {selectedDoctor.email}</span>}
+                  <div style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.92 }}>
+                    <span>🩺 <strong>{selectedDoctor.especialidad_principal}</strong></span>
+                    {selectedDoctor.matricula && <span>🪪 Matrícula: <strong>{selectedDoctor.matricula}</strong></span>}
+                    {selectedDoctor.nif && <span>🔢 DNI/CUIT: <strong>{selectedDoctor.nif}</strong></span>}
+                    {selectedDoctor.telefono && <span>📞 {selectedDoctor.telefono}</span>}
+                    {selectedDoctor.email && <span>✉️ {selectedDoctor.email}</span>}
+                  </div>
                 </div>
               </div>
 
@@ -1061,7 +1250,6 @@ export default function PadronMedicosApp() {
 
             {/* Body Ficha 360 */}
             <div className="pm-modal__body">
-              {/* Resumen de Ciclo de Vida y Actividad */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
@@ -1211,7 +1399,6 @@ export default function PadronMedicosApp() {
 
               {/* TOP 15 ATENCIONES MÁS CONCURRIDAS & TOP OBRAS SOCIALES MÁS RECIBIDAS */}
               <div className="pm-detail-grid">
-                {/* Columna Izquierda: Top 15 Atenciones */}
                 <div className="pm-box">
                   <h4 className="pm-box__title">
                     <span>🏆 Top 15 Atenciones / Prácticas Más Concurridas</span>
@@ -1248,7 +1435,6 @@ export default function PadronMedicosApp() {
                   </div>
                 </div>
 
-                {/* Columna Derecha: Top Obras Sociales */}
                 <div className="pm-box">
                   <h4 className="pm-box__title">
                     <span>💳 Obras Sociales / Financiadores Más Recibidos</span>

@@ -4,6 +4,7 @@ import {
   UserCheck, Plus, Search, Upload, Download, Edit3, Trash2, Copy,
   CheckCircle2, Clock, AlertTriangle, BarChart3, BookOpen, Table2,
   Calendar, Filter, RefreshCw, Sparkles, Building2, FileSpreadsheet,
+  HelpCircle, Play, ChevronLeft, ChevronRight, X, Lightbulb,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -327,11 +328,89 @@ const EMPTY_FORM = {
   observaciones: '',
 };
 
+// Pasos del Tutorial Interactivo Guiado (Spotlight Tour)
+const TOUR_STEPS = [
+  {
+    id: 'welcome',
+    tab: 'vacantes',
+    target: 'header',
+    title: '👋 1. Regla de Oro: Una Fila por Vacante',
+    desc: 'Este módulo digitaliza la planilla de Selección de Personal por Áreas. Cada fila representa exactamente UNA vacante a cubrir. Al iniciar vienen 6 ejemplos cargados (etiquetados como EJEMPLO) que podés quitar en cualquier momento con el botón "Limpiar ejemplos".',
+    tip: '💡 Si te piden 2 vacantes para un mismo puesto (ej. 2 Enfermeros/as), creá 2 filas separadas o usá el botón Duplicar (📑) en la columna Acciones y repartí las postulaciones sin duplicarlas.',
+  },
+  {
+    id: 'kpis',
+    tab: 'vacantes',
+    target: 'kpis',
+    title: '📊 2. Indicadores Automáticos en Tiempo Real',
+    desc: 'Las 6 tarjetas superiores calculan automáticamente el total de Búsquedas activas, las Postulaciones únicas recibidas, el % de Perfiles Idóneos sobre postulados, la tasa de Efectividad de Cobertura, el Promedio de días corridos de cobertura y las Alertas de seguimiento a los 3 meses.',
+    tip: '💡 Todos estos indicadores equivalen a la Fila 5 azul del Excel y se actualizan al instante ante cada cambio.',
+  },
+  {
+    id: 'legend',
+    tab: 'vacantes',
+    target: 'tabs',
+    title: '🎨 3. Campos Amarillos vs. Cálculos Azules',
+    desc: 'En el encabezado de la tabla verás columnas con borde AMARILLO (datos que carga RRHH manualmente) y columnas con fondo AZUL y el ícono ⚡ (cálculos 100% automáticos que nunca necesitás escribir a mano).',
+    tip: '💡 Navegá entre las 3 pestañas para alternar entre el Tablero Operativo, las Búsquedas por Mes & Gráficos, y el Simulador / Guía de Criterios.',
+  },
+  {
+    id: 'filters',
+    tab: 'vacantes',
+    target: 'filters',
+    title: '🔍 4. Filtros Rápidos y Alertas de Vencimiento',
+    desc: 'Filtrá rápidamente por Área/Servicio, por Estado (Abierta, Cubierta, Suspendida, Cancelada) o por el estado del Seguimiento a los 3 meses.',
+    tip: '💡 Elegí "⚠️ Revisar (Plazo vencido)" en el cuarto filtro para ver únicamente los ingresos que ya cumplieron 3 meses y requieren tu evaluación.',
+  },
+  {
+    id: 'table',
+    tab: 'vacantes',
+    target: 'table',
+    title: '⚡ 5. Ciclo Completo de una Vacante y Seguimiento a 3 Meses',
+    desc: '1) Al abrir la búsqueda cargás Área, Puesto, Fecha de Solicitud y Estado "Abierta". 2) A medida que evaluás CVs, actualizás Postulaciones, Perfiles idóneos y Psicotécnicos. 3) Al cubrirla, cargás la Fecha de Aceptación y la Fuente del candidato elegido (calcula solo los Días de Cobertura). 4) Al ingresar el colaborador, cargás la Fecha de Ingreso (calcula sola la Revisión a +3 meses).',
+    tip: '💡 Cuando se cumplen los 3 meses del ingreso, aparece "⚠️ Revisar". Desde el desplegable de la columna "Situación 3 meses" elegís "Continúa" o "Baja" y el aviso pasa automáticamente a "✅ Registrado".',
+  },
+  {
+    id: 'monthly',
+    tab: 'analitica',
+    target: 'analytics',
+    title: '📅 6. Búsquedas por Mes y Analítica (Según Solicitud Aprobada)',
+    desc: 'Esta pestaña replica la tabla lateral del Excel: cuenta cada vacante en el mes de su "Solicitud aprobada" según el Año seleccionado (incluso si luego fue suspendida o cancelada), acompañado por gráficos de evolución, áreas demandantes, efectividad de fuentes y motivos.',
+    tip: '💡 Podés cambiar el Año en el selector amarillo superior derecho de la tabla mensual para auditar distintos períodos.',
+  },
+  {
+    id: 'simulator',
+    tab: 'guia',
+    target: 'simulator',
+    title: '🧪 7. Simulador Interactivo y Criterios de Uso',
+    desc: 'En la pestaña "Criterios y Guía de Uso" tenés un Simulador Interactivo para probar cómo reaccionan las fórmulas automáticas cambiando fechas y cantidades sin afectar tus datos reales, además de todas las reglas operativas del área.',
+    tip: '💡 También podés importar tu archivo Excel (.xlsx) o exportar toda la tabla actualizada en 1 clic desde los botones superiores.',
+  },
+];
+
 export default function SeleccionApp() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usingSupabase, setUsingSupabase] = useState(false);
   const [activeTab, setActiveTab] = useState('vacantes'); // 'vacantes' | 'analitica' | 'guia'
+
+  // Estado del Tutorial Interactivo (Spotlight Tour)
+  const [tourActive, setTourActive] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+  const [showOnboardingBanner, setShowOnboardingBanner] = useState(() =>
+    localStorage.getItem('rrhh_seleccion_tour_dismissed') !== 'true'
+  );
+
+  // Estado del Simulador Interactivo (dentro de Guía de Uso)
+  const [simData, setSimData] = useState({
+    puesto: 'Enfermero/a de UTI',
+    fecha_solicitud: '2026-11-01',
+    fecha_aceptacion: '2026-11-14',
+    postulaciones: 10,
+    perfiles_idoneos: 4,
+    fecha_ingreso: '2026-08-10', // Fecha > 3 meses atrás para ver el cambio entre Revisar y Registrado
+    situacion_3_meses: '',
+  });
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -866,7 +945,39 @@ export default function SeleccionApp() {
 
   // Vista previa en vivo dentro del modal de los cálculos automáticos
   const modalPreview = useMemo(() => enrichRow(formData), [formData]);
+  const simPreview = useMemo(() => enrichRow(simData), [simData]);
   const hasExamples = useMemo(() => rows.some(r => r.is_example), [rows]);
+
+  // ── Funciones del Tutorial Interactivo (Spotlight Tour) ──
+  const currentTourStep = tourActive ? TOUR_STEPS[tourStep] : null;
+
+  function startTour(initialStep = 0) {
+    const stepObj = TOUR_STEPS[initialStep] || TOUR_STEPS[0];
+    setActiveTab(stepObj.tab);
+    setTourStep(initialStep);
+    setTourActive(true);
+  }
+
+  function goToTourStep(nextIdx) {
+    if (nextIdx < 0 || nextIdx >= TOUR_STEPS.length) return;
+    const stepObj = TOUR_STEPS[nextIdx];
+    if (stepObj.tab && stepObj.tab !== activeTab) {
+      setActiveTab(stepObj.tab);
+    }
+    setTourStep(nextIdx);
+    setTimeout(() => {
+      const el = document.getElementById(`sel-tour-${stepObj.target}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 80);
+  }
+
+  function closeTour() {
+    setTourActive(false);
+    setShowOnboardingBanner(false);
+    localStorage.setItem('rrhh_seleccion_tour_dismissed', 'true');
+  }
 
   if (loading) {
     return (
@@ -879,8 +990,53 @@ export default function SeleccionApp() {
 
   return (
     <div className="sel-module">
+      {/* ─── BANNER DE BIENVENIDA AL TUTORIAL INTERACTIVO ─── */}
+      {showOnboardingBanner && !tourActive && (
+        <div className="sel-onboarding-banner">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: '10px', background: '#7c3aed', color: '#ffffff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <Lightbulb size={20} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1e1b4b' }}>
+                ¿Primera vez usando Selección de Personal?
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#4338ca' }}>
+                Hacé el recorrido interactivo de 1 minuto para conocer cómo funcionan las columnas automáticas, el control de los 3 meses y las búsquedas por mes.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="sel-btn sel-btn--tour"
+              onClick={() => startTour(0)}
+            >
+              <Play size={14} />
+              Iniciar Recorrido Guiado (7 pasos)
+            </button>
+            <button
+              type="button"
+              className="sel-btn sel-btn--secondary"
+              onClick={() => {
+                setShowOnboardingBanner(false);
+                localStorage.setItem('rrhh_seleccion_tour_dismissed', 'true');
+              }}
+            >
+              Ocultar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─── ENCABEZADO ─── */}
-      <div className="sel-header">
+      <div
+        id="sel-tour-header"
+        className={`sel-header ${currentTourStep?.target === 'header' ? 'sel-tour-highlight' : ''}`}
+      >
         <div className="sel-header__title-group">
           <h2>
             <UserCheck size={24} style={{ color: '#1E5FA6' }} />
@@ -892,6 +1048,16 @@ export default function SeleccionApp() {
         </div>
 
         <div className="sel-header__actions">
+          <button
+            type="button"
+            className="sel-btn sel-btn--tour"
+            onClick={() => startTour(0)}
+            title="Iniciar tutorial interactivo paso a paso"
+          >
+            <HelpCircle size={15} />
+            Tutorial Interactivo
+          </button>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -952,7 +1118,10 @@ export default function SeleccionApp() {
       </div>
 
       {/* ─── TARJETAS KPI (Fila 5 del Excel + Indicadores Clave) ─── */}
-      <div className="sel-kpi-grid">
+      <div
+        id="sel-tour-kpis"
+        className={`sel-kpi-grid ${currentTourStep?.target === 'kpis' ? 'sel-tour-highlight' : ''}`}
+      >
         <div className="sel-kpi-card">
           <div>
             <div className="sel-kpi-card__label">Búsquedas</div>
@@ -1041,7 +1210,11 @@ export default function SeleccionApp() {
       </div>
 
       {/* ─── NAVEGACIÓN DE PESTAÑAS + LEYENDA ─── */}
-      <div className="sel-tabs-bar">
+      <div
+        id="sel-tour-tabs"
+        className={`sel-tabs-bar ${currentTourStep?.target === 'tabs' ? 'sel-tour-highlight' : ''}`}
+        style={currentTourStep?.target === 'tabs' ? { padding: '0.5rem 0.75rem' } : undefined}
+      >
         <div className="sel-tabs">
           <button
             type="button"
@@ -1089,7 +1262,10 @@ export default function SeleccionApp() {
       {activeTab === 'vacantes' && (
         <>
           {/* Filtros */}
-          <div className="sel-filters">
+          <div
+            id="sel-tour-filters"
+            className={`sel-filters ${currentTourStep?.target === 'filters' ? 'sel-tour-highlight' : ''}`}
+          >
             <div className="sel-search-wrap">
               <Search
                 size={15}
@@ -1154,7 +1330,10 @@ export default function SeleccionApp() {
           </div>
 
           {/* Tabla Principal */}
-          <div className="sel-table-card">
+          <div
+            id="sel-tour-table"
+            className={`sel-table-card ${currentTourStep?.target === 'table' ? 'sel-tour-highlight' : ''}`}
+          >
             <div className="sel-table-scroll">
               <table className="sel-table">
                 <thead>
@@ -1444,7 +1623,10 @@ export default function SeleccionApp() {
           PESTAÑA 2: BÚSQUEDAS POR MES (COLUMNAS T:U DEL EXCEL) & ANALÍTICA
          ============================================================ */}
       {activeTab === 'analitica' && (
-        <div className="sel-analytics-grid">
+        <div
+          id="sel-tour-analytics"
+          className={`sel-analytics-grid ${currentTourStep?.target === 'analytics' ? 'sel-tour-highlight' : ''}`}
+        >
           {/* Panel Izquierdo: Tabla exacta "Búsquedas por mes — Según solicitud aprobada" */}
           <div className="sel-panel-card">
             <div className="sel-panel-card__header">
@@ -1633,10 +1815,161 @@ export default function SeleccionApp() {
       )}
 
       {/* ============================================================
-          PESTAÑA 3: CRITERIOS Y GUÍA DE USO (FILAS 60-78 DEL EXCEL)
+          PESTAÑA 3: CRITERIOS, SIMULADOR INTERACTIVO Y GUÍA DE USO
          ============================================================ */}
       {activeTab === 'guia' && (
-        <div className="sel-guide-grid">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Simulador Interactivo en Vivo */}
+          <div
+            id="sel-tour-simulator"
+            className={`sel-panel-card ${currentTourStep?.target === 'simulator' ? 'sel-tour-highlight' : ''}`}
+            style={{ borderLeft: '4px solid #7c3aed' }}
+          >
+            <div className="sel-panel-card__header">
+              <div>
+                <h3 className="sel-panel-card__title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  🧪 Simulador Interactivo de Fórmulas (Modo Práctica)
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Cambiá cualquier dato amarillo de prueba acá abajo y observá cómo reaccionan automáticamente las 4 fórmulas azules sin modificar tu base real.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="sel-btn sel-btn--tour"
+                onClick={() => startTour(0)}
+              >
+                <Play size={14} />
+                Iniciar Tour Guiado Paso a Paso
+              </button>
+            </div>
+
+            <div className="sel-form-grid" style={{ marginBottom: '1rem' }}>
+              <div className="sel-field">
+                <label>🟡 1. Solicitud aprobada</label>
+                <input
+                  type="date"
+                  value={simData.fecha_solicitud}
+                  onChange={e => setSimData(prev => ({ ...prev, fecha_solicitud: e.target.value }))}
+                />
+              </div>
+              <div className="sel-field">
+                <label>🟡 2. Propuesta aceptada</label>
+                <input
+                  type="date"
+                  value={simData.fecha_aceptacion}
+                  onChange={e => setSimData(prev => ({ ...prev, fecha_aceptacion: e.target.value }))}
+                />
+              </div>
+              <div className="sel-field">
+                <label>🟡 3. Postulaciones recibidas</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={simData.postulaciones}
+                  onChange={e => setSimData(prev => ({ ...prev, postulaciones: e.target.value }))}
+                />
+              </div>
+              <div className="sel-field">
+                <label>🟡 4. Perfiles idóneos</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={simData.perfiles_idoneos}
+                  onChange={e => setSimData(prev => ({ ...prev, perfiles_idoneos: e.target.value }))}
+                />
+              </div>
+              <div className="sel-field">
+                <label>🟡 5. Fecha de ingreso efectivo</label>
+                <input
+                  type="date"
+                  value={simData.fecha_ingreso}
+                  onChange={e => setSimData(prev => ({ ...prev, fecha_ingreso: e.target.value }))}
+                />
+              </div>
+              <div className="sel-field">
+                <label>🟡 6. Situación a los 3 meses</label>
+                <select
+                  value={simData.situacion_3_meses}
+                  onChange={e => setSimData(prev => ({ ...prev, situacion_3_meses: e.target.value }))}
+                >
+                  <option value="">Vacío (Sin verificar aún)</option>
+                  <option value="Continúa">Continúa</option>
+                  <option value="Baja">Baja</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Resultado en vivo de las 4 fórmulas azules */}
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #93c5fd',
+              borderRadius: '12px',
+              padding: '1rem 1.25rem',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '1rem',
+            }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                  ⚡ Días de cobertura (Automático)
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e3a8a', marginTop: '4px' }}>
+                  {simPreview.dias_cobertura !== null ? `${simPreview.dias_cobertura} días corridos` : 'Pendiente de aceptación'}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '2px' }}>
+                  Fórmula: Propuesta aceptada − Solicitud aprobada
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                  ⚡ % de Perfiles Idóneos (Automático)
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e3a8a', marginTop: '4px' }}>
+                  {simPreview.porcentaje_idoneos !== null ? `${simPreview.porcentaje_idoneos.toFixed(1)}%` : '—'}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '2px' }}>
+                  Fórmula: Perfiles idóneos ÷ Postulaciones
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                  ⚡ Revisión a los 3 meses (Automático)
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e3a8a', marginTop: '4px' }}>
+                  {formatDateAR(simPreview.fecha_revision_3m)}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '2px' }}>
+                  Fórmula: Fecha de ingreso + 3 meses calendario
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                  ⚡ Aviso de seguimiento (Automático)
+                </div>
+                <div style={{ marginTop: '6px' }}>
+                  {simPreview.aviso_code === 'revisar' && (
+                    <span className="sel-badge sel-followup--revisar">⚠️ Revisar (Plazo cumplido)</span>
+                  )}
+                  {simPreview.aviso_code === 'pendiente' && (
+                    <span className="sel-badge sel-followup--pendiente">⏳ Pendiente de plazo ({simPreview.aviso_dias}d restantes)</span>
+                  )}
+                  {simPreview.aviso_code === 'registrado' && (
+                    <span className="sel-badge sel-followup--registrado">✅ Registrado ({simData.situacion_3_meses})</span>
+                  )}
+                  {simPreview.aviso_code === 'empty' && <span style={{ color: '#64748b' }}>Sin fecha de ingreso</span>}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '4px' }}>
+                  Probá elegir &quot;Continúa&quot; en el campo 6 para ver cómo pasa a Registrado.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="sel-guide-grid">
           <div className="sel-guide-card">
             <h4>📋 Regla de Vacante Única por Fila</h4>
             <ul>
@@ -1672,6 +2005,7 @@ export default function SeleccionApp() {
               <li><strong>Búsquedas suspendidas o canceladas:</strong> Se conservan en el historial y cuentan en el mes en que fueron aprobadas.</li>
             </ul>
           </div>
+          </div>
         </div>
       )}
 
@@ -1681,20 +2015,31 @@ export default function SeleccionApp() {
       {modalOpen && (
         <div className="sel-modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="sel-modal" onClick={e => e.stopPropagation()}>
-            <div className="sel-modal__header">
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-                {editingId ? '✏️ Editar Búsqueda / Vacante' : '➕ Nueva Búsqueda / Vacante'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                style={{ fontSize: '1.4rem', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                &times;
-              </button>
-            </div>
-
             <form onSubmit={handleSaveForm}>
+              <div className="sel-modal__header">
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                  {editingId ? '✏️ Editar Búsqueda / Vacante' : '➕ Nueva Búsqueda / Vacante'}
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <button
+                    type="submit"
+                    className="sel-btn sel-btn--primary"
+                    style={{ padding: '0.45rem 0.9rem', fontSize: '0.78rem' }}
+                  >
+                    <CheckCircle2 size={15} />
+                    {editingId ? 'Guardar Cambios' : 'Registrar Vacante'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    style={{ fontSize: '1.4rem', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+                    title="Cerrar"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+
               <div className="sel-modal__body">
                 {/* Bloque 1: Identificación de la vacante */}
                 <div className="sel-form-grid">
@@ -1976,6 +2321,99 @@ export default function SeleccionApp() {
             </div>
           </div>
         </div>
+      )}
+      {/* ============================================================
+          TARJETA FLOTANTE DEL TUTORIAL INTERACTIVO (SPOTLIGHT TOUR)
+         ============================================================ */}
+      {tourActive && currentTourStep && (
+        <>
+          <div className="sel-tour-Overlay" onClick={closeTour} />
+          <div className="sel-tour-card">
+            <div className="sel-tour-card__header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <HelpCircle size={18} />
+                <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>Tutorial Interactivo — Selección</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="sel-tour-card__step-badge">
+                  Paso {tourStep + 1} de {TOUR_STEPS.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={closeTour}
+                  style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', display: 'flex' }}
+                  title="Cerrar tutorial"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="sel-tour-card__body">
+              <h4 className="sel-tour-card__title">{currentTourStep.title}</h4>
+              <p className="sel-tour-card__desc">{currentTourStep.desc}</p>
+              {currentTourStep.tip && (
+                <div className="sel-tour-card__tip">{currentTourStep.tip}</div>
+              )}
+            </div>
+
+            <div className="sel-tour-card__progress">
+              {TOUR_STEPS.map((st, idx) => (
+                <div
+                  key={st.id}
+                  className={`sel-tour-card__dot ${
+                    idx === tourStep ? 'sel-tour-card__dot--active' : idx < tourStep ? 'sel-tour-card__dot--done' : ''
+                  }`}
+                  onClick={() => goToTourStep(idx)}
+                  title={st.title}
+                />
+              ))}
+            </div>
+
+            <div className="sel-tour-card__footer">
+              <button
+                type="button"
+                className="sel-btn sel-btn--secondary"
+                onClick={closeTour}
+                style={{ fontSize: '0.76rem', padding: '0.42rem 0.75rem' }}
+              >
+                Salir del tour
+              </button>
+
+              <div style={{ display: 'flex', gap: '0.45rem' }}>
+                <button
+                  type="button"
+                  className="sel-btn sel-btn--secondary"
+                  disabled={tourStep === 0}
+                  onClick={() => goToTourStep(tourStep - 1)}
+                  style={{ fontSize: '0.78rem', padding: '0.42rem 0.75rem' }}
+                >
+                  <ChevronLeft size={14} /> Anterior
+                </button>
+
+                {tourStep < TOUR_STEPS.length - 1 ? (
+                  <button
+                    type="button"
+                    className="sel-btn sel-btn--tour"
+                    onClick={() => goToTourStep(tourStep + 1)}
+                    style={{ fontSize: '0.78rem', padding: '0.42rem 0.9rem' }}
+                  >
+                    Siguiente <ChevronRight size={14} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="sel-btn sel-btn--primary"
+                    onClick={closeTour}
+                    style={{ fontSize: '0.78rem', padding: '0.42rem 0.9rem', background: '#16a34a' }}
+                  >
+                    ✅ ¡Entendido, empezar!
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

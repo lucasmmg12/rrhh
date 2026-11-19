@@ -5,7 +5,7 @@
 
 .pm-module {
   padding: 1.5rem 2rem 3rem;
-  max-width: 1720px;
+  max-width: 1760px;
   margin: 0 auto;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: #1e293b;
@@ -14,21 +14,21 @@
 /* Header */
 .pm-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.25rem;
+  padding: 1.15rem 1.5rem;
+  margin-bottom: 1.15rem;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .pm-header__title {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 1.3rem;
   font-weight: 800;
   color: #0f172a;
   display: flex;
@@ -37,8 +37,8 @@
 }
 
 .pm-header__subtitle {
-  margin: 0.3rem 0 0;
-  font-size: 0.83rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
   color: #64748b;
 }
 
@@ -53,7 +53,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.55rem 0.95rem;
+  padding: 0.52rem 0.95rem;
   border-radius: 8px;
   font-size: 0.8rem;
   font-weight: 600;
@@ -97,15 +97,15 @@
 .pm-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 0.9rem;
-  margin-bottom: 1.25rem;
+  gap: 0.85rem;
+  margin-bottom: 1.15rem;
 }
 
 .pm-kpi-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 1rem 1.15rem;
+  padding: 0.95rem 1.15rem;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -127,7 +127,7 @@
 }
 
 .pm-kpi-card__label {
-  font-size: 0.73rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -136,22 +136,22 @@
 }
 
 .pm-kpi-card__value {
-  font-size: 1.65rem;
+  font-size: 1.6rem;
   font-weight: 800;
   color: #0f172a;
   line-height: 1.1;
 }
 
 .pm-kpi-card__sub {
-  font-size: 0.73rem;
+  font-size: 0.72rem;
   color: #64748b;
-  margin-top: 0.35rem;
+  margin-top: 0.3rem;
   font-weight: 500;
 }
 
 .pm-kpi-card__icon {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -165,7 +165,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
   flex-wrap: wrap;
 }
 
@@ -183,7 +183,7 @@
   gap: 0.45rem;
   padding: 0.5rem 1.05rem;
   border-radius: 8px;
-  font-size: 0.82rem;
+  font-size: 0.81rem;
   font-weight: 600;
   color: #475569;
   background: transparent;
@@ -204,26 +204,26 @@
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 0.9rem 1.15rem;
+  padding: 0.85rem 1.1rem;
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
 }
 
 .pm-search-wrap {
   position: relative;
   flex: 1;
-  min-width: 260px;
+  min-width: 250px;
 }
 
 .pm-search-input {
   width: 100%;
-  padding: 0.52rem 0.85rem 0.52rem 2.2rem;
+  padding: 0.5rem 0.85rem 0.5rem 2.15rem;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 0.82rem;
+  font-size: 0.81rem;
   color: #1e293b;
   background: #f8fafc;
   outline: none;
@@ -236,16 +236,16 @@
 }
 
 .pm-select {
-  padding: 0.52rem 0.75rem;
+  padding: 0.5rem 0.7rem;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.79rem;
   font-weight: 500;
   color: #334155;
   background: #f8fafc;
   cursor: pointer;
   outline: none;
-  max-width: 230px;
+  max-width: 220px;
 }
 
 .pm-select:focus {
@@ -257,12 +257,19 @@
 .pm-status {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.22rem 0.65rem;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.71rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.pm-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 .pm-status--activo {
@@ -283,7 +290,234 @@
   border: 1px solid #fecaca;
 }
 
-/* Table */
+/* Doctor Identity Cell (Avatar + Name + Meta pills) */
+.pm-doc-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 230px;
+}
+
+.pm-doc-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #EBF2FA 0%, #DBEAFE 100%);
+  color: #1E5FA6;
+  font-weight: 800;
+  font-size: 0.76rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #BFDBFE;
+  overflow: hidden;
+  position: relative;
+}
+
+.pm-doc-avatar--photo {
+  border: 2px solid #1E5FA6;
+  box-shadow: 0 2px 6px rgba(30, 95, 166, 0.18);
+  background: #ffffff;
+}
+
+.pm-doc-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pm-doc-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #0f172a;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.pm-doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 2px;
+  flex-wrap: nowrap;
+}
+
+.pm-meta-chip {
+  font-size: 0.67rem;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.pm-esp-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #EBF2FA;
+  color: #1E5FA6;
+  font-weight: 700;
+  font-size: 0.71rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+  white-space: nowrap;
+  border: 1px solid #D0E1F3;
+}
+
+/* Sedes Compact Horizontal Pills */
+.pm-sedes-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: nowrap;
+}
+
+.pm-sede-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.48rem;
+  border-radius: 5px;
+  font-size: 0.67rem;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.pm-sede-pill--sf {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+}
+
+.pm-sede-pill--sl {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+}
+
+/* ============================================================
+   VISTA 1 MEJORADA: MATRIZ Y LÍNEA DE TIEMPO ANUAL (2016–2026)
+   ============================================================ */
+.pm-matrix-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.pm-matrix-scroll {
+  overflow-x: auto;
+}
+
+.pm-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1320px;
+}
+
+.pm-matrix-table thead th {
+  background: #f8fafc;
+  padding: 0.7rem 0.6rem;
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.pm-matrix-table thead th.pm-year-th {
+  text-align: center;
+  width: 54px;
+  min-width: 54px;
+  padding: 0.7rem 0.2rem;
+  color: #1E5FA6;
+  background: #f1f5f9;
+  border-left: 1px solid #e2e8f0;
+}
+
+.pm-matrix-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.pm-matrix-table tbody tr:hover {
+  background: #f0f7ff;
+}
+
+.pm-matrix-table td {
+  padding: 0.6rem 0.6rem;
+  vertical-align: middle;
+}
+
+.pm-year-td {
+  text-align: center;
+  padding: 0.35rem 0.18rem !important;
+  border-left: 1px solid #f8fafc;
+}
+
+.pm-year-box {
+  height: 30px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.67rem;
+  font-weight: 700;
+  transition: transform 0.12s ease;
+}
+
+.pm-year-box--empty {
+  background: #f8fafc;
+  color: #cbd5e1;
+  font-weight: 400;
+}
+
+.pm-year-box--low {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.pm-year-box--mid {
+  background: #93c5fd;
+  color: #1e3a8a;
+  border: 1px solid #60a5fa;
+}
+
+.pm-year-box--high {
+  background: #1E5FA6;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(30, 95, 166, 0.25);
+}
+
+/* Period Range Pill */
+.pm-period-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   VISTA 2 MEJORADA: TABLA BASE DE DATOS DE MÉDICOS
+   ============================================================ */
 .pm-table-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -299,15 +533,15 @@
 .pm-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
-  min-width: 1250px;
+  font-size: 0.79rem;
+  min-width: 1340px;
 }
 
 .pm-table thead th {
   background: #f8fafc;
-  padding: 0.75rem 0.85rem;
+  padding: 0.75rem 0.75rem;
   text-align: left;
-  font-size: 0.71rem;
+  font-size: 0.69rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -327,53 +561,46 @@
 }
 
 .pm-table td {
-  padding: 0.7rem 0.85rem;
+  padding: 0.62rem 0.75rem;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
-/* Timeline Gantt View */
-.pm-timeline-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+/* Top Práctica & Obra Social Mini Card */
+.pm-top-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 265px;
 }
 
-.pm-timeline-row {
-  display: grid;
-  grid-template-columns: 270px 150px 1fr 140px;
+.pm-top-line {
+  display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid #f1f5f9;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.12s;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.72rem;
 }
 
-.pm-timeline-row:hover {
-  background: #f8fafc;
-}
-
-.pm-timeline-track {
-  position: relative;
-  height: 22px;
-  background: #f1f5f9;
-  border-radius: 6px;
+.pm-top-line__name {
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  color: #1e293b;
+  font-weight: 600;
 }
 
-.pm-timeline-bar {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
+.pm-top-line__pct {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #1E5FA6;
+  background: #EBF2FA;
+  padding: 1px 5px;
   border-radius: 4px;
-  min-width: 6px;
-  transition: all 0.2s;
+  flex-shrink: 0;
 }
 
-/* 360 Doctor Detail Modal / Drawer */
+/* 360 Doctor Detail Modal */
 .pm-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -426,10 +653,6 @@
 @media (max-width: 900px) {
   .pm-detail-grid {
     grid-template-columns: 1fr;
-  }
-  .pm-timeline-row {
-    grid-template-columns: 1fr;
-    gap: 0.4rem;
   }
 }
 

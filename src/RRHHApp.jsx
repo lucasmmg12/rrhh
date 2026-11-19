@@ -1,5 +1,6 @@
 import { useState, useCallback, lazy, Suspense } from 'react';
 import Sidebar from './components/Sidebar.jsx';
+import InteractiveShaderCards from './components/InteractiveShaderCards.jsx';
 
 // Lazy load heavy modules for performance
 const OrganigramaApp = lazy(() => import('./App.jsx'));
@@ -144,6 +145,7 @@ function HomePanel() {
         {modules.map(mod => (
           <button
             key={mod.id}
+            className="home-module-card"
             onClick={() => window.__setActiveView?.(mod.id)}
             style={{
               display: 'flex', alignItems: 'flex-start', gap: '1rem',
@@ -255,6 +257,7 @@ export default function RRHHApp() {
 
   return (
     <div className="app">
+      <InteractiveShaderCards />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={handleToggleSidebar}
