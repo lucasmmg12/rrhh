@@ -434,6 +434,29 @@ export default function SeleccionApp() {
     loadData();
   }, []);
 
+  // Normaliza fechas de ingreso donde por error de tipeo se cargó 1 año más (ej. solicitud 11/2026 e ingreso 01/12/2027 en vez de 01/12/2026)
+  function sanitizeLoadedRows(list) {
+    if (!Array.isArray(list)) return [];
+    let changed = false;
+    const sanitized = list.map(r => {
+      if (r.fecha_solicitud && r.fecha_ingreso) {
+        const dSol = parseLocalDate(r.fecha_solicitud);
+        const dIng = parseLocalDate(r.fecha_ingreso);
+        if (dSol && dIng) {
+          const diffDays = Math.round((dIng.getTime() - dSol.getTime()) / (1000 * 60 * 60 * 24));
+          // Si la fecha de ingreso quedó > 300 días después de la solicitud (ej. 01/12/2027 cuando la solicitud es 11/2026), corregir el año al de la solicitud
+          if (diffDays > 300 && dIng.getFullYear() === dSol.getFullYear() + 1 && dIng.getMonth() >= dSol.getMonth()) {
+            const fixedDate = new Date(dSol.getFullYear(), dIng.getMonth(), dIng.getDate());
+            changed = true;
+            return { ...r, fecha_ingreso: toISODateString(fixedDate) };
+          }
+        }
+      }
+      return r;
+    });
+    return { sanitized, changed };
+  }
+
   async function loadData() {
     setLoading(true);
     try {
@@ -460,7 +483,13 @@ export default function SeleccionApp() {
             setRows([]);
           }
         } else {
-          setRows(data);
+          const { sanitized, changed } = sanitizeLoadedRows(data);
+          setRows(sanitized);
+          if (changed) {
+            sanitized.forEach(r => {
+              supabase.from('seleccion_personal').update({ fecha_ingreso: r.fecha_ingreso }).eq('id', r.id);
+            });
+          }
         }
         setLoading(false);
         return;
@@ -474,7 +503,12 @@ export default function SeleccionApp() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setRows(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        const { sanitized, changed } = sanitizeLoadedRows(parsed);
+        setRows(sanitized);
+        if (changed) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+        }
       } catch {
         setRows(INITIAL_EXCEL_ROWS);
       }
@@ -705,6 +739,18 @@ export default function SeleccionApp() {
       return;
     }
 
+    let fechaIngresoClean = formData.fecha_ingreso || null;
+    if (formData.fecha_solicitud && fechaIngresoClean) {
+      const dSol = parseLocalDate(formData.fecha_solicitud);
+      const dIng = parseLocalDate(fechaIngresoClean);
+      if (dSol && dIng) {
+        const diffDays = Math.round((dIng.getTime() - dSol.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays > 300 && dIng.getFullYear() === dSol.getFullYear() + 1 && dIng.getMonth() >= dSol.getMonth()) {
+          fechaIngresoClean = toISODateString(new Date(dSol.getFullYear(), dIng.getMonth(), dIng.getDate()));
+        }
+      }
+    }
+
     const normalized = {
       area: formData.area.trim(),
       puesto: formData.puesto.trim(),
@@ -715,7 +761,7 @@ export default function SeleccionApp() {
       fuente_contratacion: formData.estado === 'Abierta' ? (formData.fuente_contratacion || '') : (formData.fuente_contratacion || ''),
       estado: formData.estado,
       psicotecnicos: Math.max(0, Number(formData.psicotecnicos) || 0),
-      fecha_ingreso: formData.fecha_ingreso || null,
+      fecha_ingreso: fechaIngresoClean,
       situacion_3_meses: formData.situacion_3_meses || '',
       motivo_busqueda: formData.motivo_busqueda || '',
       observaciones: formData.observaciones || '',
@@ -2297,6 +2343,11 @@ export default function SeleccionApp() {
                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e3a8a', marginTop: '2px' }}>
                       {formatDateAR(modalPreview.fecha_revision_3m)}
                     </div>
+                    {formData.fecha_ingreso && (
+                      <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '2px' }}>
+                        +3 meses desde ingreso ({formatDateAR(formData.fecha_ingreso)})
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
