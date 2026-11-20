@@ -775,6 +775,23 @@ export default function SeleccionApp() {
     saveLocal(next);
   }
 
+  async function handleQuickEstado(row, nuevoEstado) {
+    if (usingSupabase) {
+      const { data, error } = await supabase
+        .from('seleccion_personal')
+        .update({ estado: nuevoEstado })
+        .eq('id', row.id)
+        .select()
+        .single();
+      if (!error && data) {
+        setRows(prev => prev.map(r => (r.id === row.id ? data : r)));
+        return;
+      }
+    }
+    const next = rows.map(r => (r.id === row.id ? { ...r, estado: nuevoEstado } : r));
+    saveLocal(next);
+  }
+
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     const targetId = deleteTarget.id;
@@ -1244,9 +1261,12 @@ export default function SeleccionApp() {
 
         {activeTab === 'vacantes' && (
           <div className="sel-legend">
+            <span style={{ color: '#1E5FA6', fontWeight: 700 }}>
+              👆 Hacé clic en cualquier fila para abrir y modificar la búsqueda
+            </span>
             <span>
               <span className="sel-legend__dot" style={{ background: '#facc15' }} />
-              <strong>Amarillo:</strong> Datos a completar (1 fila por vacante)
+              <strong>Amarillo:</strong> Datos a completar
             </span>
             <span>
               <span className="sel-legend__dot" style={{ background: '#3b82f6' }} />
@@ -1385,7 +1405,11 @@ export default function SeleccionApp() {
                           : 'sel-badge--abierta';
 
                       return (
-                        <tr key={row.id}>
+                        <tr
+                          key={row.id}
+                          onClick={() => handleOpenEdit(row)}
+                          title="Hacé clic para abrir y modificar esta búsqueda (fechas, postulaciones, estado, etc.)"
+                        >
                           {/* Área */}
                           <td style={{ fontWeight: 700, color: '#0f172a' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1409,7 +1433,14 @@ export default function SeleccionApp() {
                           </td>
 
                           {/* Puesto */}
-                          <td style={{ fontWeight: 600, color: '#1E5FA6' }}>{row.puesto}</td>
+                          <td style={{ fontWeight: 600, color: '#1E5FA6' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <span style={{ textDecoration: 'underline', textDecorationColor: 'rgba(30,95,166,0.35)', textUnderlineOffset: '3px' }}>
+                                {row.puesto}
+                              </span>
+                              <Edit3 size={12} style={{ color: '#64748b', opacity: 0.7, flexShrink: 0 }} />
+                            </div>
+                          </td>
 
                           {/* Solicitud aprobada */}
                           <td>{formatDateAR(row.fecha_solicitud)}</td>
@@ -1441,11 +1472,21 @@ export default function SeleccionApp() {
                             )}
                           </td>
 
-                          {/* Estado */}
-                          <td>
-                            <span className={`sel-badge ${estadoClass}`}>
-                              {row.estado}
-                            </span>
+                          {/* Estado (selector rápido + clic en fila para editar todo) */}
+                          <td onClick={e => e.stopPropagation()}>
+                            <select
+                              value={row.estado || 'Abierta'}
+                              onChange={e => handleQuickEstado(row, e.target.value)}
+                              className={`sel-badge ${estadoClass}`}
+                              style={{ cursor: 'pointer', outline: 'none', paddingRight: '0.45rem' }}
+                              title="Cambiar estado de la búsqueda"
+                            >
+                              {ESTADOS_BUSQUEDA.map(est => (
+                                <option key={est} value={est} style={{ background: '#ffffff', color: '#0f172a' }}>
+                                  {est}
+                                </option>
+                              ))}
+                            </select>
                           </td>
 
                           {/* CÁLCULO: Días de cobertura */}
@@ -1515,7 +1556,7 @@ export default function SeleccionApp() {
                           </td>
 
                           {/* Situación a los 3 meses (selector directo para facilitar seguimiento) */}
-                          <td>
+                          <td onClick={e => e.stopPropagation()}>
                             {row.fecha_ingreso ? (
                               <select
                                 value={row.situacion_3_meses || ''}
@@ -1558,23 +1599,33 @@ export default function SeleccionApp() {
                             {row.observaciones || <span style={{ color: '#94a3b8' }}>—</span>}
                           </td>
 
-                          {/* Acciones */}
-                          <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'inline-flex', gap: '0.3rem' }}>
+                          {/* Acciones (Fija a la derecha para que siempre esté visible) */}
+                          <td
+                            className="sel-td--actions"
+                            style={{ textAlign: 'center', whiteSpace: 'nowrap' }}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
                               <button
                                 type="button"
                                 onClick={() => handleOpenEdit(row)}
-                                title="Editar vacante"
+                                title="Abrir y modificar fechas, postulaciones o datos de esta vacante"
                                 style={{
-                                  padding: '0.35rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  padding: '0.32rem 0.6rem',
                                   borderRadius: '6px',
-                                  border: '1px solid #e2e8f0',
-                                  background: '#ffffff',
+                                  border: '1px solid #bfdbfe',
+                                  background: '#eff6ff',
                                   color: '#1E5FA6',
+                                  fontWeight: 700,
+                                  fontSize: '0.73rem',
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Edit3 size={14} />
+                                <Edit3 size={13} />
+                                Editar
                               </button>
                               <button
                                 type="button"

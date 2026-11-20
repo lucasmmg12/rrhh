@@ -331,17 +331,34 @@
 .sel-th--actions {
   background: #f8fafc;
   color: #475569;
-  border-top: 3px solid #94a3b8;
+  border-top: 3px solid #1E5FA6;
   text-align: center !important;
+  position: sticky !important;
+  right: 0;
+  z-index: 8 !important;
+  box-shadow: -4px 0 10px rgba(15, 23, 42, 0.06);
+}
+
+.sel-td--actions {
+  position: sticky;
+  right: 0;
+  background: #ffffff;
+  z-index: 4;
+  box-shadow: -4px 0 10px rgba(15, 23, 42, 0.05);
 }
 
 .sel-table tbody tr {
   border-bottom: 1px solid #f1f5f9;
   transition: background 0.12s ease;
+  cursor: pointer;
 }
 
 .sel-table tbody tr:hover {
-  background: #f8fafc;
+  background: #f0f7ff;
+}
+
+.sel-table tbody tr:hover .sel-td--actions {
+  background: #f0f7ff;
 }
 
 .sel-table td {
