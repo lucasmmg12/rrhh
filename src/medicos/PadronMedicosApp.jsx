@@ -191,6 +191,7 @@ export default function PadronMedicosApp() {
   const [filterEspecialidad, setFilterEspecialidad] = useState('');
   const [filterSede, setFilterSede] = useState('');
   const [filterObraSocial, setFilterObraSocial] = useState('');
+  const [filterSeguro, setFilterSeguro] = useState(''); // '' | 'con_seguro' | 'sin_seguro' | 'con_cuil' | 'con_sss'
   const [onlyWithPhoto, setOnlyWithPhoto] = useState(false);
   const [includeGenericos, setIncludeGenericos] = useState(false);
   const [sortBy, setSortBy] = useState('ultima_desc');
@@ -302,6 +303,10 @@ export default function PadronMedicosApp() {
     const totalAtenciones = baseList.reduce((acc, p) => acc + (p.total_atenciones || 0), 0);
     const atendieron30d = baseList.filter(p => (p.atenciones_30d || 0) > 0).length;
     const conFoto = baseList.filter(p => Boolean(p.foto_url)).length;
+    const conCuil = baseList.filter(p => Boolean(p.cuil)).length;
+    const conSeguro = baseList.filter(p => Boolean(p.seguro)).length;
+    const conDireccion = baseList.filter(p => Boolean(p.direccion)).length;
+    const conSss = baseList.filter(p => Boolean(p.nro_sss)).length;
 
     return {
       total,
@@ -311,6 +316,10 @@ export default function PadronMedicosApp() {
       totalAtenciones,
       atendieron30d,
       conFoto,
+      conCuil,
+      conSeguro,
+      conDireccion,
+      conSss,
       pctActivos: total > 0 ? ((activos / total) * 100).toFixed(1) : '0.0',
     };
   }, [baseList]);
@@ -322,6 +331,10 @@ export default function PadronMedicosApp() {
     const list = baseList.filter(p => {
       if (onlyWithPhoto && !p.foto_url) return false;
       if (filterEstado && p.estado_actividad !== filterEstado) return false;
+      if (filterSeguro === 'con_seguro' && !p.seguro) return false;
+      if (filterSeguro === 'sin_seguro' && p.seguro) return false;
+      if (filterSeguro === 'con_cuil' && !p.cuil) return false;
+      if (filterSeguro === 'con_sss' && !p.nro_sss) return false;
       if (filterEspecialidad) {
         const hasEsp =
           p.especialidad_principal === filterEspecialidad ||
@@ -340,8 +353,14 @@ export default function PadronMedicosApp() {
         const matchNombre = (p.nombre || '').toLowerCase().includes(q);
         const matchMat = (p.matricula || '').toLowerCase().includes(q);
         const matchNif = (p.nif || '').toLowerCase().includes(q);
+        const matchDni = (p.dni || '').toLowerCase().includes(q);
+        const matchCuil = (p.cuil || '').toLowerCase().includes(q) || (p.cuil || '').replace(/-/g, '').includes(q);
+        const matchRazon = (p.razon_social || '').toLowerCase().includes(q);
+        const matchDir = (p.direccion || '').toLowerCase().includes(q);
+        const matchSeguro = (p.seguro || '').toLowerCase().includes(q);
+        const matchSss = (p.nro_sss || '').toLowerCase().includes(q);
         const matchEsp = (p.especialidad_principal || '').toLowerCase().includes(q);
-        if (!matchNombre && !matchMat && !matchNif && !matchEsp) return false;
+        if (!matchNombre && !matchMat && !matchNif && !matchDni && !matchCuil && !matchRazon && !matchDir && !matchSeguro && !matchSss && !matchEsp) return false;
       }
       return true;
     });
@@ -364,11 +383,11 @@ export default function PadronMedicosApp() {
     });
 
     return sorted;
-  }, [baseList, onlyWithPhoto, filterEstado, filterEspecialidad, filterSede, filterObraSocial, searchTerm, sortBy]);
+  }, [baseList, onlyWithPhoto, filterEstado, filterSeguro, filterEspecialidad, filterSede, filterObraSocial, searchTerm, sortBy]);
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, onlyWithPhoto, filterEstado, filterEspecialidad, filterSede, filterObraSocial, includeGenericos, sortBy]);
+  }, [searchTerm, onlyWithPhoto, filterEstado, filterSeguro, filterEspecialidad, filterSede, filterObraSocial, includeGenericos, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / PAGE_SIZE));
   const paginatedDoctors = useMemo(() => {
@@ -418,8 +437,16 @@ export default function PadronMedicosApp() {
     const rowsExport = filteredDoctors.map(d => ({
       'ID SALUS': d.id_personal,
       'Médico / Prestador': d.nombre,
-      'Matrícula': d.matricula || '',
-      'DNI / NIF': d.nif || '',
+      'Matrícula Provincial (MP)': d.matricula || '',
+      'N° Superintendencia Salud (SSS)': d.nro_sss || '',
+      'DNI': d.dni || d.nif || '',
+      'CUIL / CUIT': d.cuil || '',
+      'Razón Social / Facturación': d.razon_social || '',
+      'Dirección': d.direccion || '',
+      'Localidad': d.localidad || '',
+      'Código Postal': d.cp || '',
+      'Seguro Responsabilidad Civil': d.seguro || '',
+      'Vencimiento Seguro RC': formatDateAR(d.seguro_vencimiento),
       'Especialidad Principal': d.especialidad_principal || '',
       'Otras Especialidades': (d.especialidades || []).slice(1).map(e => e.nombre).join(', '),
       'Estado de Actividad': d.estado_actividad,
@@ -649,7 +676,7 @@ export default function PadronMedicosApp() {
             <input
               type="text"
               className="pm-search-input"
-              placeholder="Buscar médico por apellido, nombre, matrícula, DNI o especialidad..."
+              placeholder="Buscar por apellido, nombre, matrícula, DNI, CUIL, razón social, seguro, dirección o N° SSS..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
@@ -704,6 +731,19 @@ export default function PadronMedicosApp() {
 
           <select
             className="pm-select"
+            value={filterSeguro}
+            onChange={e => setFilterSeguro(e.target.value)}
+            title="Filtrar por datos legales y seguro profesional en SALUS"
+          >
+            <option value="">Legajo SALUS: Todos</option>
+            <option value="con_cuil">🧾 Con CUIL / Razón Social ({kpis.conCuil})</option>
+            <option value="con_seguro">🛡️ Con Seguro RC cargado ({kpis.conSeguro})</option>
+            <option value="sin_seguro">⚠️ Sin Seguro RC registrado ({kpis.total - kpis.conSeguro})</option>
+            <option value="con_sss">🏛️ Con N° Superintendencia SSS ({kpis.conSss})</option>
+          </select>
+
+          <select
+            className="pm-select"
             value={sortBy}
             onChange={e => setSortBy(e.target.value)}
             style={{ fontWeight: 700, color: '#1E5FA6' }}
@@ -729,7 +769,7 @@ export default function PadronMedicosApp() {
             📷 Con foto ({kpis.conFoto})
           </button>
 
-          {(searchTerm || onlyWithPhoto || filterEstado || filterEspecialidad || filterSede || filterObraSocial) && (
+          {(searchTerm || onlyWithPhoto || filterEstado || filterSeguro || filterEspecialidad || filterSede || filterObraSocial) && (
             <button
               type="button"
               className="pm-btn pm-btn--secondary"
@@ -737,6 +777,7 @@ export default function PadronMedicosApp() {
                 setSearchTerm('');
                 setOnlyWithPhoto(false);
                 setFilterEstado('');
+                setFilterSeguro('');
                 setFilterEspecialidad('');
                 setFilterSede('');
                 setFilterObraSocial('');
@@ -814,6 +855,18 @@ export default function PadronMedicosApp() {
                                 </span>
                                 {doc.matricula && (
                                   <span className="pm-meta-chip">MP {doc.matricula}</span>
+                                )}
+                                {doc.cuil ? (
+                                  <span className="pm-meta-chip pm-meta-chip--cuil" title={`CUIL/CUIT: ${doc.cuil}${doc.razon_social ? ` • Razón Social: ${doc.razon_social}` : ''}`}>
+                                    CUIL {doc.cuil}
+                                  </span>
+                                ) : doc.dni ? (
+                                  <span className="pm-meta-chip">DNI {doc.dni}</span>
+                                ) : null}
+                                {doc.nro_sss && (
+                                  <span className="pm-meta-chip pm-meta-chip--sss" title="N° Superintendencia de Servicios de Salud">
+                                    SSS {doc.nro_sss}
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -938,6 +991,8 @@ export default function PadronMedicosApp() {
                 <tr>
                   <th>Médico / Identificación</th>
                   <th>Especialidad</th>
+                  <th>CUIL / Razón Social</th>
+                  <th>Dirección / Seguro RC</th>
                   <th>Estado y Última Atención</th>
                   <th>Período de Atención (Desde → Hasta)</th>
                   <th style={{ textAlign: 'right' }}>Volumen Histórico</th>
@@ -967,7 +1022,7 @@ export default function PadronMedicosApp() {
 
                   return (
                     <tr key={doc.id_personal} onClick={() => setSelectedDoctor(doc)}>
-                      {/* Col 1: Avatar + Nombre en 1 línea + Chips MP / DNI */}
+                      {/* Col 1: Avatar + Nombre en 1 línea + Chips MP / DNI / SSS */}
                       <td>
                         <div className="pm-doc-cell">
                           <DoctorAvatar doc={doc} size={38} />
@@ -979,8 +1034,13 @@ export default function PadronMedicosApp() {
                               <span className="pm-meta-chip">
                                 {doc.matricula ? `MP ${doc.matricula}` : 'Sin MP'}
                               </span>
-                              {doc.nif && (
-                                <span className="pm-meta-chip">DNI {doc.nif}</span>
+                              {(doc.dni || doc.nif) && (
+                                <span className="pm-meta-chip">DNI {doc.dni || doc.nif}</span>
+                              )}
+                              {doc.nro_sss && (
+                                <span className="pm-meta-chip pm-meta-chip--sss" title="N° Superintendencia de Servicios de Salud">
+                                  SSS {doc.nro_sss}
+                                </span>
                               )}
                             </div>
                           </div>
@@ -1001,6 +1061,53 @@ export default function PadronMedicosApp() {
                               +{doc.especialidades.length - 1}
                             </span>
                           )}
+                        </div>
+                      </td>
+
+                      {/* Col 3: CUIL / Razón Social */}
+                      <td>
+                        {doc.cuil ? (
+                          <div style={{ fontWeight: 700, fontSize: '0.77rem', color: '#1e3a8a' }}>
+                            {doc.cuil}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.73rem', color: '#94a3b8' }}>Sin CUIL</div>
+                        )}
+                        <div
+                          style={{
+                            fontSize: '0.69rem',
+                            color: '#64748b',
+                            maxWidth: '185px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={doc.razon_social || 'Sin razón social'}
+                        >
+                          {doc.razon_social || '—'}
+                        </div>
+                      </td>
+
+                      {/* Col 4: Dirección & Seguro RC */}
+                      <td>
+                        <div
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            color: '#1e293b',
+                            maxWidth: '215px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={doc.direccion || 'Sin dirección registrada'}
+                        >
+                          {doc.direccion ? `📍 ${doc.direccion}` : '—'}
+                        </div>
+                        <div style={{ fontSize: '0.69rem', color: doc.seguro ? '#0369a1' : '#94a3b8', marginTop: '2px', fontWeight: 600 }}>
+                          {doc.seguro
+                            ? `🛡️ ${doc.seguro}${doc.seguro_vencimiento ? ` (Vto: ${formatDateAR(doc.seguro_vencimiento)})` : ''}`
+                            : 'Sin seguro RC en legajo'}
                         </div>
                       </td>
 
@@ -1222,8 +1329,13 @@ export default function PadronMedicosApp() {
 
                   <div style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.92 }}>
                     <span>🩺 <strong>{selectedDoctor.especialidad_principal}</strong></span>
-                    {selectedDoctor.matricula && <span>🪪 Matrícula: <strong>{selectedDoctor.matricula}</strong></span>}
-                    {selectedDoctor.nif && <span>🔢 DNI/CUIT: <strong>{selectedDoctor.nif}</strong></span>}
+                    {selectedDoctor.matricula && <span>🪪 Matrícula MP: <strong>{selectedDoctor.matricula}</strong></span>}
+                    {selectedDoctor.nro_sss && <span>🏛️ N° Superintendencia (SSS): <strong>{selectedDoctor.nro_sss}</strong></span>}
+                    {selectedDoctor.cuil ? (
+                      <span>🧾 CUIL/CUIT: <strong>{selectedDoctor.cuil}</strong></span>
+                    ) : (selectedDoctor.dni || selectedDoctor.nif) ? (
+                      <span>🔢 DNI: <strong>{selectedDoctor.dni || selectedDoctor.nif}</strong></span>
+                    ) : null}
                     {selectedDoctor.telefono && <span>📞 {selectedDoctor.telefono}</span>}
                     {selectedDoctor.email && <span>✉️ {selectedDoctor.email}</span>}
                   </div>
@@ -1315,6 +1427,69 @@ export default function PadronMedicosApp() {
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
                     {selectedDoctor.atenciones_365d.toLocaleString('es-AR')} en últimos 12 meses
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── DATOS FISCALES, LEGALES, DIRECCIÓN Y SEGURO PROFESIONAL (SALUS) ─── */}
+              <div className="pm-box">
+                <h4 className="pm-box__title">
+                  <span>🏛️ Datos Fiscales, Legales, Dirección y Seguro Profesional (SALUS)</span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>
+                    ID Personal SALUS #{selectedDoctor.id_personal}
+                  </span>
+                </h4>
+                <div className="pm-legal-grid">
+                  <div className="pm-legal-item">
+                    <span className="pm-legal-item__label">🧾 CUIL / CUIT</span>
+                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.cuil ? '#1E5FA6' : '#94a3b8' }}>
+                      {selectedDoctor.cuil || 'No registrado'}
+                    </span>
+                    <span className="pm-legal-item__sub">
+                      DNI: <strong>{selectedDoctor.dni || selectedDoctor.nif || '—'}</strong>
+                    </span>
+                  </div>
+
+                  <div className="pm-legal-item">
+                    <span className="pm-legal-item__label">🏢 Razón Social / Facturación</span>
+                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.razon_social ? '#0f172a' : '#94a3b8' }}>
+                      {selectedDoctor.razon_social || 'No registrada'}
+                    </span>
+                    <span className="pm-legal-item__sub">
+                      Entidad fiscal asociada en SALUS
+                    </span>
+                  </div>
+
+                  <div className="pm-legal-item">
+                    <span className="pm-legal-item__label">📍 Dirección Registrada</span>
+                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.direccion ? '#0f172a' : '#94a3b8' }}>
+                      {selectedDoctor.calle || selectedDoctor.direccion || 'No registrada'}
+                    </span>
+                    <span className="pm-legal-item__sub">
+                      {[selectedDoctor.localidad, selectedDoctor.cp ? `CP ${selectedDoctor.cp}` : ''].filter(Boolean).join(' • ') || 'San Juan'}
+                    </span>
+                  </div>
+
+                  <div className="pm-legal-item">
+                    <span className="pm-legal-item__label">🛡️ Seguro Responsabilidad Civil</span>
+                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.seguro ? '#0369a1' : '#94a3b8' }}>
+                      {selectedDoctor.seguro || 'No registrado en legajo'}
+                    </span>
+                    <span className="pm-legal-item__sub">
+                      {selectedDoctor.seguro_vencimiento
+                        ? `Vencimiento póliza: ${formatDateAR(selectedDoctor.seguro_vencimiento)}`
+                        : 'Sin fecha de vencimiento informada'}
+                    </span>
+                  </div>
+
+                  <div className="pm-legal-item">
+                    <span className="pm-legal-item__label">🏛️ N° Superintendencia Salud (SSS)</span>
+                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.nro_sss ? '#15803d' : '#94a3b8' }}>
+                      {selectedDoctor.nro_sss || 'No registrado'}
+                    </span>
+                    <span className="pm-legal-item__sub">
+                      Matrícula Provincial (MP): <strong>{selectedDoctor.matricula || '—'}</strong>
+                    </span>
                   </div>
                 </div>
               </div>
