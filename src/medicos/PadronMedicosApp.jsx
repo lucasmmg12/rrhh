@@ -1364,7 +1364,7 @@ export default function PadronMedicosApp() {
             <div className="pm-modal__body">
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                 gap: '0.85rem',
               }}>
                 <div className="pm-box" style={{ padding: '0.9rem 1rem', borderLeft: '4px solid #1E5FA6' }}>
@@ -1391,42 +1391,6 @@ export default function PadronMedicosApp() {
                   </div>
                   <div style={{ fontSize: '0.72rem', fontWeight: 600, color: selectedDoctor.estado_actividad === 'Activo' ? '#15803d' : '#b91c1c', marginTop: '2px' }}>
                     {formatTiempoSinAtender(selectedDoctor.dias_sin_atender)}
-                  </div>
-                </div>
-
-                <div className="pm-box" style={{ padding: '0.9rem 1rem', borderLeft: '4px solid #0284C7' }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                    Total Atenciones
-                  </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                    {selectedDoctor.total_atenciones.toLocaleString('es-AR')}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                    {selectedDoctor.pacientes_unicos.toLocaleString('es-AR')} pacientes únicos
-                  </div>
-                </div>
-
-                <div className="pm-box" style={{ padding: '0.9rem 1rem', borderLeft: '4px solid #7C3AED' }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                    Trayectoria y Ritmo
-                  </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                    {formatAntiguedad(selectedDoctor.primera_atencion, selectedDoctor.ultima_atencion)}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                    ~{selectedDoctor.promedio_por_mes_activo} atenciones/mes ({selectedDoctor.dias_atendidos} días atendidos)
-                  </div>
-                </div>
-
-                <div className="pm-box" style={{ padding: '0.9rem 1rem', borderLeft: '4px solid #0D9488' }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                    Actividad Reciente
-                  </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                    {selectedDoctor.atenciones_90d.toLocaleString('es-AR')} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>en 90d</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                    {selectedDoctor.atenciones_365d.toLocaleString('es-AR')} en últimos 12 meses
                   </div>
                 </div>
               </div>
@@ -1572,80 +1536,42 @@ export default function PadronMedicosApp() {
                 </div>
               </div>
 
-              {/* TOP 15 ATENCIONES MÁS CONCURRIDAS & TOP OBRAS SOCIALES MÁS RECIBIDAS */}
-              <div className="pm-detail-grid">
-                <div className="pm-box">
-                  <h4 className="pm-box__title">
-                    <span>🏆 Top 15 Atenciones / Prácticas Más Concurridas</span>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                      Según Tipo de Visita en SALUS
-                    </span>
-                  </h4>
-                  <div className="pm-rank-list">
-                    {(selectedDoctor.top_atenciones || []).length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Sin prácticas detalladas.</p>
-                    ) : (
-                      selectedDoctor.top_atenciones.map((item, idx) => (
-                        <div key={item.nombre} className="pm-rank-item">
-                          <div className="pm-rank-num">#{idx + 1}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.nombre}>
-                              {item.nombre}
-                            </div>
-                            <div style={{ fontSize: '0.69rem', color: '#64748b' }}>
-                              Última realización: {formatDateAR(item.ultima_vez)}
-                            </div>
+              {/* TOP OBRAS SOCIALES MÁS RECIBIDAS */}
+              <div className="pm-box">
+                <h4 className="pm-box__title">
+                  <span>💳 Obras Sociales / Financiadores Más Recibidos</span>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+                    Top Coberturas del Profesional en SALUS
+                  </span>
+                </h4>
+                <div className="pm-rank-list" style={{ maxHeight: '320px' }}>
+                  {(selectedDoctor.top_obras_sociales || []).length === 0 ? (
+                    <p style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Sin obras sociales detalladas.</p>
+                  ) : (
+                    selectedDoctor.top_obras_sociales.map((os, idx) => (
+                      <div key={os.nombre} className="pm-rank-item">
+                        <div className="pm-rank-num" style={{ background: '#E0F2FE', color: '#0369A1' }}>
+                          #{idx + 1}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={os.nombre}>
+                            {os.nombre}
                           </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <div style={{ fontWeight: 800, color: '#1E5FA6' }}>
-                              {item.cantidad.toLocaleString('es-AR')}
-                            </div>
-                            <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 600 }}>
-                              {item.porcentaje}%
-                            </div>
+                          <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '99px', marginTop: '4px', overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, os.porcentaje)}%`, height: '100%', background: '#0284C7' }} />
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="pm-box">
-                  <h4 className="pm-box__title">
-                    <span>💳 Obras Sociales / Financiadores Más Recibidos</span>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                      Top Coberturas del Profesional
-                    </span>
-                  </h4>
-                  <div className="pm-rank-list">
-                    {(selectedDoctor.top_obras_sociales || []).length === 0 ? (
-                      <p style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Sin obras sociales detalladas.</p>
-                    ) : (
-                      selectedDoctor.top_obras_sociales.map((os, idx) => (
-                        <div key={os.nombre} className="pm-rank-item">
-                          <div className="pm-rank-num" style={{ background: '#E0F2FE', color: '#0369A1' }}>
-                            #{idx + 1}
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontWeight: 800, color: '#0369A1' }}>
+                            {os.cantidad.toLocaleString('es-AR')}
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={os.nombre}>
-                              {os.nombre}
-                            </div>
-                            <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '99px', marginTop: '4px', overflow: 'hidden' }}>
-                              <div style={{ width: `${Math.min(100, os.porcentaje)}%`, height: '100%', background: '#0284C7' }} />
-                            </div>
-                          </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <div style={{ fontWeight: 800, color: '#0369A1' }}>
-                              {os.cantidad.toLocaleString('es-AR')}
-                            </div>
-                            <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 600 }}>
-                              {os.porcentaje}%
-                            </div>
+                          <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 600 }}>
+                            {os.porcentaje}%
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
