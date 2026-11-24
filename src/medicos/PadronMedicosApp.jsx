@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Stethoscope, Search, Download, RefreshCw, Clock, CheckCircle2,
   XCircle, Activity, Users, ChevronLeft, ChevronRight,
-  BarChart3, Table2, GitCommitHorizontal, Eye, ArrowRight,
+  BarChart3, Table2, GitCommitHorizontal, Eye, ArrowRight, ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -156,6 +156,260 @@ function matchDoctorWithPrestador(doc, prestadoresList) {
   return bestMatch;
 }
 
+// Categorización clínica vs. servicios/diagnóstico para el buscador inteligente de especialidades
+const APOYO_DIAGNOSTICO_SET = new Set([
+  'ENFERMERIA', 'ENFERMERÍA', '**APOYO DE SERVICIO**', 'APOYO DE SERVICIO',
+  'CHEQUEO', 'MONITOREO FETAL', 'CURACIONES', 'PREADMISION', 'PREPARTO',
+  'ECOGRAFISTA', 'RADIOLOGIA', 'MAMOGRAFIA', 'TOMOGRAFIA COMPUTADA',
+  'DENSITOMETRIA', 'BIOQUIMICA', 'INSTRUMENTISTA', 'VACUNATORIO',
+  'EXTRACCIONISTA', 'CONTROL NEONATAL', 'SUTURAS', 'CONTROL - AUX',
+  'SIN ESPECIFICAR',
+]);
+
+function formatEspDisplayName(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/\*+/g, '')
+    .replace(/\s*\/\s*/g, ' / ')
+    .trim();
+}
+
+function getEspCategory(raw) {
+  const upper = String(raw || '').toUpperCase().trim();
+  return APOYO_DIAGNOSTICO_SET.has(upper) ? 'apoyo' : 'medica';
+}
+
+function EspecialidadSearchSelect({ options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [catFilter, setCatFilter] = useState('todas'); // 'todas' | 'medica' | 'apoyo'
+  const [sortMode, setSortMode] = useState('count'); // 'count' | 'az'
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    function handleOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleOutside);
+      setTimeout(() => inputRef.current?.focus(), 20);
+    }
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  const enrichedOptions = useMemo(() => {
+    return options
+      .filter(o => o.nombre && o.nombre !== 'Sin especificar')
+      .map(o => ({
+        ...o,
+        label: formatEspDisplayName(o.nombre),
+        cat: getEspCategory(o.nombre),
+        norm: normalizeStr(o.nombre),
+      }));
+  }, [options]);
+
+  const filteredOptions = useMemo(() => {
+    const qNorm = normalizeStr(query);
+    const list = enrichedOptions.filter(o => {
+      if (catFilter === 'medica' && o.cat !== 'medica') return false;
+      if (catFilter === 'apoyo' && o.cat !== 'apoyo') return false;
+      if (!qNorm) return o.count > 0 || o.secCount > 0;
+      return o.norm.includes(qNorm);
+    });
+
+    const sorted = [...list];
+    if (sortMode === 'az') {
+      sorted.sort((a, b) => a.label.localeCompare(b.label, 'es'));
+    } else {
+      sorted.sort((a, b) => b.count - a.count || b.secCount - a.secCount);
+    }
+    return sorted;
+  }, [enrichedOptions, query, catFilter, sortMode]);
+
+  const selectedObj = useMemo(
+    () => enrichedOptions.find(o => o.nombre === value) || null,
+    [enrichedOptions, value]
+  );
+
+  const medicasCount = useMemo(
+    () => enrichedOptions.filter(o => o.cat === 'medica' && o.count > 0).length,
+    [enrichedOptions]
+  );
+
+  return (
+    <div className="pm-esp-combo" ref={wrapRef}>
+      <button
+        type="button"
+        className={`pm-esp-combo__trigger ${open ? 'pm-esp-combo__trigger--open' : ''} ${value ? 'pm-esp-combo__trigger--active' : ''}`}
+        onClick={() => setOpen(prev => !prev)}
+        title="Buscar y filtrar por 1ª Especialidad Principal"
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, overflow: 'hidden' }}>
+          <Stethoscope size={14} style={{ color: value ? '#1E5FA6' : '#64748b', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedObj
+              ? `${selectedObj.label} (${selectedObj.count})`
+              : `Especialidades (${medicasCount} médicas)`}
+          </span>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+          {value && (
+            <span
+              role="button"
+              tabIndex={0}
+              className="pm-esp-combo__clear"
+              title="Quitar filtro de especialidad"
+              onClick={e => {
+                e.stopPropagation();
+                onChange('');
+                setQuery('');
+              }}
+            >
+              &times;
+            </span>
+          )}
+          <ChevronDown size={14} style={{ color: '#64748b', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </span>
+      </button>
+
+      {open && (
+        <div className="pm-esp-combo__popover">
+          <div className="pm-esp-combo__search-box">
+            <Search size={14} style={{ position: 'absolute', left: '1.25rem', top: '53%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+            <input
+              ref={inputRef}
+              type="text"
+              className="pm-esp-combo__search-input"
+              placeholder="Escribí para buscar especialidad (ej: Gine, Cardio)..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') setOpen(false);
+                if (e.key === 'Enter' && filteredOptions.length > 0) {
+                  onChange(filteredOptions[0].nombre);
+                  setOpen(false);
+                }
+              }}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                style={{
+                  position: 'absolute', right: '1.15rem', top: '53%', transform: 'translateY(-50%)',
+                  border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700,
+                }}
+              >
+                &times;
+              </button>
+            )}
+          </div>
+
+          <div className="pm-esp-combo__toolbar">
+            <div className="pm-esp-combo__cat-pills">
+              <button
+                type="button"
+                className={`pm-esp-combo__cat-btn ${catFilter === 'todas' ? 'pm-esp-combo__cat-btn--active' : ''}`}
+                onClick={() => setCatFilter('todas')}
+              >
+                Todas
+              </button>
+              <button
+                type="button"
+                className={`pm-esp-combo__cat-btn ${catFilter === 'medica' ? 'pm-esp-combo__cat-btn--active' : ''}`}
+                onClick={() => setCatFilter('medica')}
+                title="Mostrar solo especialidades clínicas y quirúrgicas"
+              >
+                🩺 Médicas
+              </button>
+              <button
+                type="button"
+                className={`pm-esp-combo__cat-btn ${catFilter === 'apoyo' ? 'pm-esp-combo__cat-btn--active' : ''}`}
+                onClick={() => setCatFilter('apoyo')}
+                title="Diagnóstico por imágenes, enfermería, chequeos y servicios de apoyo"
+              >
+                🔬 Diagnóstico / Apoyo
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="pm-esp-combo__sort-btn"
+              onClick={() => setSortMode(prev => (prev === 'count' ? 'az' : 'count'))}
+              title="Cambiar orden de la lista"
+            >
+              {sortMode === 'count' ? '↓ Cantidad' : 'A → Z'}
+            </button>
+          </div>
+
+          <div className="pm-esp-combo__list">
+            {!query && (
+              <button
+                type="button"
+                className={`pm-esp-combo__option ${value === '' ? 'pm-esp-combo__option--selected' : ''}`}
+                onClick={() => {
+                  onChange('');
+                  setOpen(false);
+                }}
+              >
+                <span className="pm-esp-combo__opt-name">📋 Todas las especialidades</span>
+                <span className="pm-esp-combo__badge-main">Ver padrón completo</span>
+              </button>
+            )}
+
+            {filteredOptions.length === 0 ? (
+              <div style={{ padding: '1.2rem 0.75rem', textAlign: 'center', fontSize: '0.78rem', color: '#64748b' }}>
+                No se encontraron especialidades para &ldquo;{query}&rdquo;
+              </div>
+            ) : (
+              filteredOptions.map(opt => {
+                const isSelected = value === opt.nombre;
+                return (
+                  <button
+                    key={opt.nombre}
+                    type="button"
+                    className={`pm-esp-combo__option ${isSelected ? 'pm-esp-combo__option--selected' : ''}`}
+                    onClick={() => {
+                      onChange(opt.nombre);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="pm-esp-combo__opt-name" title={opt.label}>
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: opt.cat === 'medica' ? '#1E5FA6' : '#94a3b8',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.label}</span>
+                    </span>
+                    <span className="pm-esp-combo__counts">
+                      <span className="pm-esp-combo__badge-main" title={`${opt.count} profesionales con ${opt.label} como 1ª especialidad`}>
+                        {opt.count}
+                      </span>
+                      {opt.secCount > 0 && (
+                        <span className="pm-esp-combo__badge-sec" title={`+${opt.secCount} profesionales la registran como especialidad secundaria`}>
+                          +{opt.secCount} sec
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Componente Avatar con Foto Real de Prestadores o Iniciales
 function DoctorAvatar({ doc, size = 38 }) {
   const [imgError, setImgError] = useState(false);
@@ -189,12 +443,23 @@ export default function PadronMedicosApp() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState(''); // '' | 'Activo' | 'Baja Frecuencia' | 'Inactivo'
   const [filterEspecialidad, setFilterEspecialidad] = useState('');
+  const [filterModalidad, setFilterModalidad] = useState(''); // '' | 'solo_guardia' | 'excluir_guardia' | 'consultorio' | 'mixto'
   const [filterSede, setFilterSede] = useState('');
   const [filterObraSocial, setFilterObraSocial] = useState('');
   const [filterSeguro, setFilterSeguro] = useState(''); // '' | 'con_seguro' | 'sin_seguro' | 'con_cuil' | 'con_sss'
   const [onlyWithPhoto, setOnlyWithPhoto] = useState(false);
   const [includeGenericos, setIncludeGenericos] = useState(false);
   const [sortBy, setSortBy] = useState('ultima_desc');
+
+  // Expansión de especialidades secundarias ("Ver más")
+  const [expandedEspIds, setExpandedEspIds] = useState({});
+  const [showSecundariosPanel, setShowSecundariosPanel] = useState(false);
+  const [modalShowSecundarias, setModalShowSecundarias] = useState(false);
+
+  function toggleDoctorSecundarias(idPersonal, e) {
+    if (e) e.stopPropagation();
+    setExpandedEspIds(prev => ({ ...prev, [idPersonal]: !prev[idPersonal] }));
+  }
 
   // Paginación
   const [page, setPage] = useState(1);
@@ -264,19 +529,32 @@ export default function PadronMedicosApp() {
     return includeGenericos ? profesionales : profesionales.filter(p => !p.es_generico);
   }, [profesionales, includeGenericos]);
 
-  // Catálogos dinámicos para selectores de filtro
+  // Catálogos dinámicos para selectores de filtro (conteo limpio por 1ª Especialidad Principal)
   const allEspecialidades = useMemo(() => {
-    const map = new Map();
+    const primaryMap = new Map();
+    const secondaryMap = new Map();
+
     baseList.forEach(p => {
-      (p.especialidades || []).forEach(e => {
-        if (e.nombre) {
-          map.set(e.nombre, (map.get(e.nombre) || 0) + 1);
+      const princ = p.especialidad_principal;
+      if (princ && princ !== 'Sin especificar') {
+        primaryMap.set(princ, (primaryMap.get(princ) || 0) + 1);
+      }
+      const secs = p.especialidades_secundarias || (p.especialidades || []).slice(1);
+      secs.forEach(e => {
+        if (e.nombre && e.nombre !== princ) {
+          secondaryMap.set(e.nombre, (secondaryMap.get(e.nombre) || 0) + 1);
         }
       });
     });
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([nombre, count]) => ({ nombre, count }));
+
+    const allNames = new Set([...primaryMap.keys(), ...secondaryMap.keys()]);
+    return Array.from(allNames)
+      .map(nombre => ({
+        nombre,
+        count: primaryMap.get(nombre) || 0,
+        secCount: secondaryMap.get(nombre) || 0,
+      }))
+      .sort((a, b) => b.count - a.count || b.secCount - a.secCount);
   }, [baseList]);
 
   const allObrasSociales = useMemo(() => {
@@ -307,6 +585,9 @@ export default function PadronMedicosApp() {
     const conSeguro = baseList.filter(p => Boolean(p.seguro)).length;
     const conDireccion = baseList.filter(p => Boolean(p.direccion)).length;
     const conSss = baseList.filter(p => Boolean(p.nro_sss)).length;
+    const soloGuardia = baseList.filter(p => Boolean(p.es_solo_guardia)).length;
+    const mixtoGuardia = baseList.filter(p => p.modalidad_atencion === 'Consultorio y Guardia').length;
+    const soloConsultorio = baseList.filter(p => !p.es_solo_guardia && (p.atenciones_guardia || 0) === 0).length;
 
     return {
       total,
@@ -320,27 +601,27 @@ export default function PadronMedicosApp() {
       conSeguro,
       conDireccion,
       conSss,
+      soloGuardia,
+      mixtoGuardia,
+      soloConsultorio,
       pctActivos: total > 0 ? ((activos / total) * 100).toFixed(1) : '0.0',
     };
   }, [baseList]);
 
-  // Aplicar filtros y ordenamiento
-  const filteredDoctors = useMemo(() => {
+  // Función común para filtros excepto especialidad
+  const matchesNonEspFilters = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
-
-    const list = baseList.filter(p => {
+    return (p) => {
       if (onlyWithPhoto && !p.foto_url) return false;
       if (filterEstado && p.estado_actividad !== filterEstado) return false;
+      if (filterModalidad === 'solo_guardia' && !p.es_solo_guardia) return false;
+      if (filterModalidad === 'excluir_guardia' && p.es_solo_guardia) return false;
+      if (filterModalidad === 'consultorio' && (p.es_solo_guardia || (p.atenciones_guardia || 0) > 0)) return false;
+      if (filterModalidad === 'mixto' && p.modalidad_atencion !== 'Consultorio y Guardia') return false;
       if (filterSeguro === 'con_seguro' && !p.seguro) return false;
       if (filterSeguro === 'sin_seguro' && p.seguro) return false;
       if (filterSeguro === 'con_cuil' && !p.cuil) return false;
       if (filterSeguro === 'con_sss' && !p.nro_sss) return false;
-      if (filterEspecialidad) {
-        const hasEsp =
-          p.especialidad_principal === filterEspecialidad ||
-          (p.especialidades || []).some(e => e.nombre === filterEspecialidad);
-        if (!hasEsp) return false;
-      }
       if (filterSede) {
         const hasSede = (p.sedes || []).some(s => s.sede === filterSede);
         if (!hasSede) return false;
@@ -363,6 +644,15 @@ export default function PadronMedicosApp() {
         if (!matchNombre && !matchMat && !matchNif && !matchDni && !matchCuil && !matchRazon && !matchDir && !matchSeguro && !matchSss && !matchEsp) return false;
       }
       return true;
+    };
+  }, [onlyWithPhoto, filterEstado, filterModalidad, filterSeguro, filterSede, filterObraSocial, searchTerm]);
+
+  // Aplicar filtros y ordenamiento (estricto por 1ª especialidad cuando hay filtro activo)
+  const filteredDoctors = useMemo(() => {
+    const list = baseList.filter(p => {
+      if (!matchesNonEspFilters(p)) return false;
+      if (filterEspecialidad && p.especialidad_principal !== filterEspecialidad) return false;
+      return true;
     });
 
     const sorted = [...list];
@@ -383,11 +673,37 @@ export default function PadronMedicosApp() {
     });
 
     return sorted;
-  }, [baseList, onlyWithPhoto, filterEstado, filterSeguro, filterEspecialidad, filterSede, filterObraSocial, searchTerm, sortBy]);
+  }, [baseList, matchesNonEspFilters, filterEspecialidad, sortBy]);
+
+  // Otros médicos que tienen la especialidad filtrada como secundaria
+  const secondaryDoctorsForSelectedEsp = useMemo(() => {
+    if (!filterEspecialidad) return [];
+    return baseList
+      .filter(p => {
+        if (!matchesNonEspFilters(p)) return false;
+        if (p.especialidad_principal === filterEspecialidad) return false;
+        const secs = p.especialidades_secundarias || (p.especialidades || []).slice(1);
+        return secs.some(e => e.nombre === filterEspecialidad);
+      })
+      .map(p => {
+        const secs = p.especialidades_secundarias || (p.especialidades || []).slice(1);
+        const secEntry = secs.find(e => e.nombre === filterEspecialidad);
+        return { ...p, _secCant: secEntry?.cantidad || 0, _secPct: secEntry?.porcentaje || 0 };
+      })
+      .sort((a, b) => b._secCant - a._secCant);
+  }, [baseList, matchesNonEspFilters, filterEspecialidad]);
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, onlyWithPhoto, filterEstado, filterSeguro, filterEspecialidad, filterSede, filterObraSocial, includeGenericos, sortBy]);
+  }, [searchTerm, onlyWithPhoto, filterEstado, filterModalidad, filterSeguro, filterEspecialidad, filterSede, filterObraSocial, includeGenericos, sortBy]);
+
+  useEffect(() => {
+    setShowSecundariosPanel(false);
+  }, [filterEspecialidad]);
+
+  useEffect(() => {
+    setModalShowSecundarias(false);
+  }, [selectedDoctor]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / PAGE_SIZE));
   const paginatedDoctors = useMemo(() => {
@@ -447,8 +763,12 @@ export default function PadronMedicosApp() {
       'Código Postal': d.cp || '',
       'Seguro Responsabilidad Civil': d.seguro || '',
       'Vencimiento Seguro RC': formatDateAR(d.seguro_vencimiento),
-      'Especialidad Principal': d.especialidad_principal || '',
-      'Otras Especialidades': (d.especialidades || []).slice(1).map(e => e.nombre).join(', '),
+      'Especialidad Principal (1ª)': d.especialidad_principal || '',
+      'Especialidades Secundarias': (d.especialidades_secundarias || (d.especialidades || []).slice(1)).map(e => `${e.nombre} (${e.cantidad})`).join(', '),
+      'Modalidad de Atención': d.modalidad_atencion || (d.es_solo_guardia ? 'Solo Guardia' : 'Consultorio / Programado'),
+      'Es Solo de Guardia': d.es_solo_guardia ? 'Sí' : 'No',
+      '% Atenciones en Guardia': d.pct_guardia !== undefined ? `${d.pct_guardia}%` : '0%',
+      'Agendas de Guardia (SALUS)': (d.agendas_guardia || []).map(a => `${a.nombre} (${a.cantidad})`).join(' | '),
       'Estado de Actividad': d.estado_actividad,
       'Activo en Ficha SALUS': d.activo_salus ? 'Sí' : 'No',
       'Primera Atención (Desde)': formatDateAR(d.primera_atencion),
@@ -599,17 +919,21 @@ export default function PadronMedicosApp() {
           </div>
         </div>
 
-        <div className="pm-kpi-card" style={{ cursor: 'default' }}>
+        <div
+          className={`pm-kpi-card ${filterModalidad === 'solo_guardia' ? 'pm-kpi-card--selected' : ''}`}
+          onClick={() => setFilterModalidad(filterModalidad === 'solo_guardia' ? '' : 'solo_guardia')}
+          title="Filtrar médicos que atienden exclusivamente en agendas de Guardia en SALUS"
+        >
           <div>
-            <div className="pm-kpi-card__label">Atenciones Analizadas</div>
-            <div className="pm-kpi-card__value" style={{ color: '#1E5FA6' }}>
-              {(kpis.totalAtenciones / 1000000).toFixed(2)}M
+            <div className="pm-kpi-card__label">🚨 Solo de Guardia</div>
+            <div className="pm-kpi-card__value" style={{ color: '#b45309' }}>
+              {kpis.soloGuardia.toLocaleString('es-AR')}
             </div>
             <div className="pm-kpi-card__sub">
-              {kpis.totalAtenciones.toLocaleString('es-AR')} consultas/prácticas
+              Exclusivos agendas Guardias (+{kpis.mixtoGuardia} mixtos)
             </div>
           </div>
-          <div className="pm-kpi-card__icon" style={{ background: '#E0F2FE', color: '#0284C7' }}>
+          <div className="pm-kpi-card__icon" style={{ background: '#FEF3C7', color: '#B45309' }}>
             <Activity size={20} />
           </div>
         </div>
@@ -693,17 +1017,23 @@ export default function PadronMedicosApp() {
             <option value="Inactivo">🔴 Inactivos &gt; 365 días ({kpis.inactivos})</option>
           </select>
 
+          <EspecialidadSearchSelect
+            options={allEspecialidades}
+            value={filterEspecialidad}
+            onChange={setFilterEspecialidad}
+          />
+
           <select
             className="pm-select"
-            value={filterEspecialidad}
-            onChange={e => setFilterEspecialidad(e.target.value)}
+            value={filterModalidad}
+            onChange={e => setFilterModalidad(e.target.value)}
+            title="Filtrar según si el médico atiende en Consultorio o en Agendas de Guardia"
           >
-            <option value="">Todas las especialidades ({allEspecialidades.length})</option>
-            {allEspecialidades.map(e => (
-              <option key={e.nombre} value={e.nombre}>
-                {e.nombre} ({e.count})
-              </option>
-            ))}
+            <option value="">Modalidad: Todas</option>
+            <option value="solo_guardia">🚨 Solo de Guardia ({kpis.soloGuardia})</option>
+            <option value="excluir_guardia">🚫 Excluir Solo Guardia ({kpis.total - kpis.soloGuardia})</option>
+            <option value="consultorio">🏥 Solo Consultorio / Programado ({kpis.soloConsultorio})</option>
+            <option value="mixto">🔄 Mixtos: Consultorio + Guardia ({kpis.mixtoGuardia})</option>
           </select>
 
           <select
@@ -769,7 +1099,7 @@ export default function PadronMedicosApp() {
             📷 Con foto ({kpis.conFoto})
           </button>
 
-          {(searchTerm || onlyWithPhoto || filterEstado || filterSeguro || filterEspecialidad || filterSede || filterObraSocial) && (
+          {(searchTerm || onlyWithPhoto || filterEstado || filterModalidad || filterSeguro || filterEspecialidad || filterSede || filterObraSocial) && (
             <button
               type="button"
               className="pm-btn pm-btn--secondary"
@@ -777,6 +1107,7 @@ export default function PadronMedicosApp() {
                 setSearchTerm('');
                 setOnlyWithPhoto(false);
                 setFilterEstado('');
+                setFilterModalidad('');
                 setFilterSeguro('');
                 setFilterEspecialidad('');
                 setFilterSede('');
@@ -786,6 +1117,32 @@ export default function PadronMedicosApp() {
               Limpiar
             </button>
           )}
+        </div>
+      )}
+
+      {/* ─── BANNER DE OTROS MÉDICOS CON ESTA ESPECIALIDAD COMO SECUNDARIA ─── */}
+      {activeTab !== 'analitica' && filterEspecialidad && secondaryDoctorsForSelectedEsp.length > 0 && (
+        <div className="pm-secondary-banner">
+          <div style={{ fontSize: '0.8rem', color: '#334155', lineHeight: 1.4 }}>
+            🎯 Mostrando <strong>{filteredDoctors.length}</strong> {filteredDoctors.length === 1 ? 'profesional' : 'profesionales'} cuya <strong>1ª especialidad principal</strong> es <strong>{filterEspecialidad}</strong>.
+            {' '}Además, existen <strong>{secondaryDoctorsForSelectedEsp.length} médicos</strong> de otras especialidades que registran atenciones secundarias en <strong>{filterEspecialidad}</strong>.
+          </div>
+          <button
+            type="button"
+            className="pm-btn"
+            style={{
+              background: showSecundariosPanel ? '#1E5FA6' : '#ffffff',
+              color: showSecundariosPanel ? '#ffffff' : '#1E5FA6',
+              borderColor: '#1E5FA6',
+              padding: '0.4rem 0.85rem',
+              fontSize: '0.76rem',
+            }}
+            onClick={() => setShowSecundariosPanel(prev => !prev)}
+          >
+            {showSecundariosPanel
+              ? 'Ocultar médicos con especialidad secundaria'
+              : `➕ Ver otros ${secondaryDoctorsForSelectedEsp.length} médicos con ${filterEspecialidad} como secundaria`}
+          </button>
         </div>
       )}
 
@@ -846,13 +1203,33 @@ export default function PadronMedicosApp() {
                           <div className="pm-doc-cell">
                             <DoctorAvatar doc={doc} size={38} />
                             <div style={{ minWidth: 0 }}>
-                              <div className="pm-doc-name" title={doc.nombre}>
-                                {doc.nombre}
+                              <div className="pm-doc-name" title={doc.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', maxWidth: '280px' }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</span>
+                                {doc.es_solo_guardia && (
+                                  <span
+                                    className="pm-guardia-badge"
+                                    title={`Médico exclusivo de Guardia (${doc.pct_guardia}% en agendas Guardias: ${(doc.agendas_guardia || []).map(a => a.nombre).join(', ')})`}
+                                  >
+                                    🚨 Solo Guardia
+                                  </span>
+                                )}
                               </div>
-                              <div className="pm-doc-meta">
+                              <div className="pm-doc-meta" style={{ flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1E5FA6' }}>
-                                  {doc.especialidad_principal}
+                                  {formatEspDisplayName(doc.especialidad_principal)}
                                 </span>
+                                {(doc.especialidades_secundarias?.length || (doc.especialidades?.length || 0) - 1) > 0 && (
+                                  <button
+                                    type="button"
+                                    className="pm-ver-mas-btn"
+                                    onClick={e => toggleDoctorSecundarias(doc.id_personal, e)}
+                                    title="Ver especialidades secundarias registradas por este profesional"
+                                  >
+                                    {expandedEspIds[doc.id_personal]
+                                      ? 'Ocultar'
+                                      : `Ver más (+${(doc.especialidades_secundarias || doc.especialidades.slice(1)).length})`}
+                                  </button>
+                                )}
                                 {doc.matricula && (
                                   <span className="pm-meta-chip">MP {doc.matricula}</span>
                                 )}
@@ -869,6 +1246,19 @@ export default function PadronMedicosApp() {
                                   </span>
                                 )}
                               </div>
+                              {expandedEspIds[doc.id_personal] && (
+                                <div className="pm-sec-esp-list" onClick={e => e.stopPropagation()}>
+                                  {(doc.especialidades_secundarias || (doc.especialidades || []).slice(1)).map(sec => (
+                                    <span
+                                      key={sec.nombre}
+                                      className="pm-sec-esp-chip"
+                                      title={`${sec.nombre}: ${(sec.cantidad || 0).toLocaleString('es-AR')} atenciones (${sec.porcentaje || 0}%)`}
+                                    >
+                                      {sec.nombre} ({(sec.cantidad || 0).toLocaleString('es-AR')})
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1027,8 +1417,16 @@ export default function PadronMedicosApp() {
                         <div className="pm-doc-cell">
                           <DoctorAvatar doc={doc} size={38} />
                           <div>
-                            <div className="pm-doc-name" title={doc.nombre}>
-                              {doc.nombre}
+                            <div className="pm-doc-name" title={doc.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', maxWidth: '280px' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</span>
+                              {doc.es_solo_guardia && (
+                                <span
+                                  className="pm-guardia-badge"
+                                  title={`Médico exclusivo de Guardia (${doc.pct_guardia}% en agendas Guardias: ${(doc.agendas_guardia || []).map(a => a.nombre).join(', ')})`}
+                                >
+                                  🚨 Solo Guardia
+                                </span>
+                              )}
                             </div>
                             <div className="pm-doc-meta">
                               <span className="pm-meta-chip">
@@ -1047,21 +1445,38 @@ export default function PadronMedicosApp() {
                         </div>
                       </td>
 
-                      {/* Col 2: Especialidad en píldora sin partir líneas */}
+                      {/* Col 2: 1ª Especialidad Principal + botón Ver más */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           <span className="pm-esp-badge">
-                            {doc.especialidad_principal}
+                            {formatEspDisplayName(doc.especialidad_principal)}
                           </span>
-                          {doc.especialidades?.length > 1 && (
-                            <span
-                              className="pm-meta-chip"
-                              title={doc.especialidades.slice(1).map(e => e.nombre).join(', ')}
+                          {(doc.especialidades_secundarias?.length || (doc.especialidades?.length || 0) - 1) > 0 && (
+                            <button
+                              type="button"
+                              className="pm-ver-mas-btn"
+                              onClick={e => toggleDoctorSecundarias(doc.id_personal, e)}
+                              title="Ver otras especialidades secundarias de este profesional"
                             >
-                              +{doc.especialidades.length - 1}
-                            </span>
+                              {expandedEspIds[doc.id_personal]
+                                ? 'Ocultar'
+                                : `Ver más (+${(doc.especialidades_secundarias || doc.especialidades.slice(1)).length})`}
+                            </button>
                           )}
                         </div>
+                        {expandedEspIds[doc.id_personal] && (
+                          <div className="pm-sec-esp-list" onClick={e => e.stopPropagation()}>
+                            {(doc.especialidades_secundarias || (doc.especialidades || []).slice(1)).map(sec => (
+                              <span
+                                key={sec.nombre}
+                                className="pm-sec-esp-chip"
+                                title={`${sec.nombre}: ${(sec.cantidad || 0).toLocaleString('es-AR')} atenciones (${sec.porcentaje || 0}%)`}
+                              >
+                                {sec.nombre} ({(sec.cantidad || 0).toLocaleString('es-AR')})
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
 
                       {/* Col 3: CUIL / Razón Social */}
@@ -1240,6 +1655,98 @@ export default function PadronMedicosApp() {
         </div>
       )}
 
+      {/* ─── PANEL DESPLEGABLE DE MÉDICOS CON LA ESPECIALIDAD FILTRADA COMO SECUNDARIA ─── */}
+      {activeTab !== 'analitica' && filterEspecialidad && showSecundariosPanel && secondaryDoctorsForSelectedEsp.length > 0 && (
+        <div className="pm-secondary-section">
+          <div className="pm-secondary-section__header">
+            <div>
+              <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                📋 Profesionales de otras especialidades con atenciones secundarias en {filterEspecialidad} ({secondaryDoctorsForSelectedEsp.length})
+              </strong>
+              <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '2px' }}>
+                Separados del padrón principal para no contaminar la cabecera de {filterEspecialidad}, conservando la trazabilidad histórica de SALUS.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="pm-btn pm-btn--secondary"
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.74rem' }}
+              onClick={() => setShowSecundariosPanel(false)}
+            >
+              Cerrar lista secundaria
+            </button>
+          </div>
+          <div className="pm-table-scroll">
+            <table className="pm-table" style={{ minWidth: '920px' }}>
+              <thead>
+                <tr>
+                  <th>Médico / Prestador</th>
+                  <th>1ª Especialidad Principal (Cabecera)</th>
+                  <th style={{ textAlign: 'right' }}>Atenciones en {filterEspecialidad} (Secundaria)</th>
+                  <th style={{ textAlign: 'right' }}>Total Histórico General</th>
+                  <th>Estado Actual</th>
+                  <th style={{ textAlign: 'center' }}>Ficha 360°</th>
+                </tr>
+              </thead>
+              <tbody>
+                {secondaryDoctorsForSelectedEsp.map(doc => (
+                  <tr key={doc.id_personal} onClick={() => setSelectedDoctor(doc)}>
+                    <td>
+                      <div className="pm-doc-cell">
+                        <DoctorAvatar doc={doc} size={34} />
+                        <div>
+                          <div className="pm-doc-name" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span>{doc.nombre}</span>
+                            {doc.es_solo_guardia && <span className="pm-guardia-badge">🚨 Solo Guardia</span>}
+                          </div>
+                          <div className="pm-doc-meta">
+                            {doc.matricula && <span className="pm-meta-chip">MP {doc.matricula}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="pm-esp-badge">{doc.especialidad_principal}</span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 800, color: '#1E5FA6' }}>
+                      {doc._secCant.toLocaleString('es-AR')} atenc.{' '}
+                      <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>({doc._secPct}%)</span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: '#475569' }}>
+                      {doc.total_atenciones.toLocaleString('es-AR')} atenc.
+                    </td>
+                    <td>
+                      <span className={`pm-status ${
+                        doc.estado_actividad === 'Activo'
+                          ? 'pm-status--activo'
+                          : doc.estado_actividad === 'Baja Frecuencia'
+                          ? 'pm-status--baja'
+                          : 'pm-status--inactivo'
+                      }`}>
+                        {doc.estado_actividad}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        className="pm-btn pm-btn--secondary"
+                        style={{ padding: '0.3rem 0.65rem', fontSize: '0.72rem', color: '#1E5FA6' }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedDoctor(doc);
+                        }}
+                      >
+                        <Eye size={13} /> Ver 360°
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ============================================================
           VISTA 3: ANALÍTICA INSTITUCIONAL DE PRESTADORES
          ============================================================ */}
@@ -1325,6 +1832,11 @@ export default function PadronMedicosApp() {
                     }`}>
                       {selectedDoctor.estado_actividad}
                     </span>
+                    {selectedDoctor.es_solo_guardia && (
+                      <span className="pm-guardia-badge pm-guardia-badge--header">
+                        🚨 Médico Exclusivo de Guardia ({selectedDoctor.pct_guardia}%)
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.92 }}>
@@ -1513,25 +2025,95 @@ export default function PadronMedicosApp() {
 
                   <div>
                     <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
-                      <span>🎓 Especialidades Registradas</span>
+                      <span>🎓 Especialidad Principal y Secundarias</span>
                     </h4>
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      {(selectedDoctor.especialidades || []).map(e => (
-                        <span
-                          key={e.nombre}
-                          style={{
-                            background: '#EBF2FA',
-                            color: '#1E5FA6',
-                            padding: '0.3rem 0.65rem',
-                            borderRadius: '8px',
-                            fontSize: '0.76rem',
-                            fontWeight: 700,
-                          }}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          background: '#1E5FA6',
+                          color: '#ffffff',
+                          padding: '0.32rem 0.75rem',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ⭐ 1ª Principal: {selectedDoctor.especialidad_principal}
+                        {selectedDoctor.especialidades?.[0]?.cantidad > 0
+                          ? ` (${selectedDoctor.especialidades[0].cantidad.toLocaleString('es-AR')})`
+                          : ''}
+                      </span>
+
+                      {(selectedDoctor.especialidades_secundarias?.length || (selectedDoctor.especialidades?.length || 0) - 1) > 0 && (
+                        <button
+                          type="button"
+                          className="pm-ver-mas-btn"
+                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.74rem' }}
+                          onClick={() => setModalShowSecundarias(prev => !prev)}
                         >
-                          {e.nombre} {e.cantidad > 0 ? `(${e.cantidad.toLocaleString('es-AR')})` : ''}
-                        </span>
-                      ))}
+                          {modalShowSecundarias
+                            ? 'Ocultar especialidades secundarias'
+                            : `Ver más especialidades (+${(selectedDoctor.especialidades_secundarias || selectedDoctor.especialidades.slice(1)).length})`}
+                        </button>
+                      )}
                     </div>
+
+                    {modalShowSecundarias && (
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+                        {(selectedDoctor.especialidades_secundarias || (selectedDoctor.especialidades || []).slice(1)).map(e => (
+                          <span
+                            key={e.nombre}
+                            style={{
+                              background: '#f1f5f9',
+                              color: '#334155',
+                              border: '1px solid #cbd5e1',
+                              padding: '0.26rem 0.6rem',
+                              borderRadius: '7px',
+                              fontSize: '0.73rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {e.nombre} {e.cantidad > 0 ? `(${e.cantidad.toLocaleString('es-AR')} • ${e.porcentaje || 0}%)` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modalidad de Atención y Agendas de Guardia */}
+                  <div>
+                    <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
+                      <span>🚨 Modalidad y Agendas de Guardia (SALUS)</span>
+                    </h4>
+                    <div style={{ fontSize: '0.79rem', color: '#334155', marginBottom: selectedDoctor.agendas_guardia?.length ? '0.5rem' : 0 }}>
+                      Modalidad detectada:{' '}
+                      <strong style={{ color: selectedDoctor.es_solo_guardia ? '#b45309' : '#1E5FA6' }}>
+                        {selectedDoctor.es_solo_guardia
+                          ? `🚨 Exclusivo de Guardia (${selectedDoctor.pct_guardia}% de sus visitas)`
+                          : selectedDoctor.atenciones_guardia > 0
+                          ? `🔄 Consultorio + Guardia (${selectedDoctor.pct_guardia}% en guardia)`
+                          : '🏥 Consultorio / Atención Programada (sin agendas de guardia)'}
+                      </strong>
+                    </div>
+                    {selectedDoctor.agendas_guardia?.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        {selectedDoctor.agendas_guardia.map(ag => (
+                          <div key={ag.nombre} className="pm-rank-item" style={{ justifyContent: 'space-between', background: '#fffbeb', borderColor: '#fde68a' }}>
+                            <div>
+                              <strong style={{ color: '#92400e' }}>{ag.nombre}</strong>
+                              {ag.ultima_vez && (
+                                <span style={{ fontSize: '0.7rem', color: '#b45309', marginLeft: '0.5rem' }}>
+                                  Última guardia: {formatDateAR(ag.ultima_vez)}
+                                </span>
+                              )}
+                            </div>
+                            <strong style={{ color: '#b45309' }}>
+                              {ag.cantidad.toLocaleString('es-AR')} atenc.
+                            </strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

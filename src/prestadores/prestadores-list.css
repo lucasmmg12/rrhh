@@ -230,6 +230,62 @@
   border: 1px solid #FDE68A;
 }
 
+/* ── Trayectoria Badge ── */
+.prestadores-list__trayectoria {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 0.35rem;
+  padding: 4px 9px;
+  background: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  color: #1e40af;
+  font-weight: 500;
+  width: fit-content;
+  line-height: 1.25;
+}
+
+.prestadores-list__trayectoria strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.prestadores-list__trayectoria--nuevo {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.prestadores-list__trayectoria--nuevo strong {
+  color: #15803d;
+}
+
+.prestadores-list__trayectoria-icon {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.prestadores-list__trayectoria-desde {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.prestadores-list__guardia-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 0.71rem;
+  font-weight: 700;
+  color: #b45309;
+  line-height: 1.25;
+}
+
 /* Date */
 .prestadores-list__date {
   font-size: 0.7rem;

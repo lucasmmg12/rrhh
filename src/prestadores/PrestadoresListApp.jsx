@@ -44,34 +44,178 @@ function shortenSede(sede) {
   return sede;
 }
 
+// ── Normalización y cruce de trayectoria con SALUS ──
+function normalizeStr(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\bde\s+[a-z]+$/g, ' ')
+    .replace(/\b(dra?|lic|med|esp|mg|magister)\b\.?/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getTokens(s) {
+  const stop = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e']);
+  return normalizeStr(s)
+    .split(' ')
+    .filter(t => t.length > 1 && !stop.has(t));
+}
+
+function extractAllNumbers(matStr) {
+  if (!matStr) return [];
+  return String(matStr).match(/\d{3,6}/g) || [];
+}
+
+function formatDateAR(isoStr) {
+  if (!isoStr) return '';
+  const parts = String(isoStr).split('T')[0].split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return isoStr;
+}
+
+function formatAntiguedad(primeraIso, ultimaIso) {
+  if (!primeraIso) return '';
+  const d1 = new Date(primeraIso + 'T00:00:00');
+  const d2 = ultimaIso ? new Date(ultimaIso + 'T00:00:00') : new Date();
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '';
+  const diffDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+  const years = Math.floor(diffDays / 365);
+  const months = Math.floor((diffDays % 365) / 30);
+  if (years > 0 && months > 0) return `${years}a ${months}m`;
+  if (years > 0) return `${years} ${years === 1 ? 'año' : 'años'}`;
+  if (months > 0) return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+  return `${diffDays}d`;
+}
+
 // ── Main Component ──
 export default function PrestadoresListApp() {
   const [prestadores, setPrestadores] = useState([]);
+  const [padronSalus, setPadronSalus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sedeFilter, setSedeFilter] = useState('');
+  const [sortBy, setSortBy] = useState('recientes'); // 'recientes' | 'trayectoria_desc' | 'nombre_asc'
   const [editingPrestador, setEditingPrestador] = useState(null);
   const [deletingPrestador, setDeletingPrestador] = useState(null);
 
-  // ── Fetch data ──
+  // ── Fetch data (Prestadores + Padrón SALUS en paralelo) ──
   useEffect(() => {
-    async function fetchPrestadores() {
+    async function fetchData() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('nuevos_prestadores')
-        .select('*')
-        .order('created_at', { ascending: false });
+      try {
+        const [prestadoresRes, salusRes] = await Promise.all([
+          supabase.from('nuevos_prestadores').select('*').order('created_at', { ascending: false }),
+          fetch('/data/padron_medicos_salus.json')
+            .then(r => r.ok ? r.json() : { profesionales: [] })
+            .catch(() => ({ profesionales: [] }))
+        ]);
 
-      if (error) {
-        console.error('Error fetching prestadores:', error);
-      } else {
-        setPrestadores(data || []);
+        if (prestadoresRes.error) {
+          console.error('Error fetching prestadores:', prestadoresRes.error);
+        } else {
+          setPrestadores(prestadoresRes.data || []);
+        }
+
+        setPadronSalus(salusRes.profesionales || []);
+      } catch (err) {
+        console.error('Error al cargar datos de prestadores y padrón:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
-    fetchPrestadores();
+    fetchData();
   }, []);
+
+  // ── Mapeo de Trayectoria de cada Prestador ──
+  const getPrestadorTrayectoria = (prestador) => {
+    if (prestador.trayectoria) {
+      return {
+        texto: prestador.trayectoria,
+        desde: null,
+        dias: 99999,
+        detalle: `Trayectoria informada: ${prestador.trayectoria}`,
+        esNuevo: false,
+      };
+    }
+
+    if (!padronSalus || padronSalus.length === 0) return null;
+
+    const pTokens = getTokens(prestador.nombre_completo);
+    const pNums = extractAllNumbers(prestador.matricula);
+    const pMP4 = pNums.filter(n => n.length === 4);
+
+    let bestDoc = null;
+    let bestScore = 0;
+
+    for (const doc of padronSalus) {
+      if (doc.es_generico) continue;
+      const rawParts = String(doc.nombre || '').split(',');
+      const surnameTokens = getTokens(rawParts[0] || '');
+      const givenTokens = getTokens(rawParts[1] || '');
+      if (surnameTokens.length === 0) continue;
+
+      const primarySurname = surnameTokens[0];
+      if (!pTokens.includes(primarySurname)) continue;
+
+      const docNums = extractAllNumbers(doc.matricula);
+      const docMP4 = docNums.filter(n => n.length === 4);
+      const mpOverlap = docNums.some(n => pNums.includes(n));
+
+      if (docMP4.length > 0 && pMP4.length > 0 && !mpOverlap) continue;
+
+      const pGivenCandidates = pTokens.filter(t => !surnameTokens.includes(t));
+      let score = 0;
+
+      if (mpOverlap) {
+        if (pGivenCandidates.length > 0 && givenTokens.length > 0) {
+          if (pGivenCandidates.some(t => givenTokens.includes(t))) score = 100;
+          else score = 85;
+        } else {
+          score = 95;
+        }
+      } else if (pTokens.every(t => [...surnameTokens, ...givenTokens].includes(t))) {
+        score = 70 + pTokens.length * 5;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestDoc = doc;
+      }
+    }
+
+    if (bestDoc && bestScore >= 70 && bestDoc.primera_atencion) {
+      const antiguedad = formatAntiguedad(bestDoc.primera_atencion, bestDoc.ultima_atencion);
+      const anioInicio = bestDoc.primera_atencion.split('-')[0];
+      const d1 = new Date(bestDoc.primera_atencion + 'T00:00:00');
+      const d2 = bestDoc.ultima_atencion ? new Date(bestDoc.ultima_atencion + 'T00:00:00') : new Date();
+      const diffDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+
+      return {
+        texto: antiguedad,
+        desde: anioInicio,
+        dias: diffDays,
+        primeraAtencion: formatDateAR(bestDoc.primera_atencion),
+        ultimaAtencion: formatDateAR(bestDoc.ultima_atencion),
+        totalAtenciones: bestDoc.total_atenciones,
+        esSoloGuardia: Boolean(bestDoc.es_solo_guardia),
+        agendasGuardia: (bestDoc.agendas_guardia || []).map(a => a.nombre).join(', '),
+        detalle: `En Sanatorio Argentino desde ${formatDateAR(bestDoc.primera_atencion)} (${bestDoc.total_atenciones?.toLocaleString('es-AR')} atenciones registradas en SALUS)`,
+        esNuevo: false,
+      };
+    }
+
+    return {
+      texto: 'Ingreso Reciente',
+      desde: prestador.created_at ? new Date(prestador.created_at).getFullYear() : '2026',
+      dias: 0,
+      detalle: `Incorporación reciente (${formatDate(prestador.created_at)})`,
+      esNuevo: true,
+    };
+  };
 
   // ── Actions ──
   const handleDeleteClick = (prestador) => {
@@ -114,7 +258,8 @@ export default function PrestadoresListApp() {
       const q = search.toLowerCase().trim();
       result = result.filter(p =>
         p.nombre_completo.toLowerCase().includes(q) ||
-        p.servicio_especialidad.toLowerCase().includes(q)
+        p.servicio_especialidad.toLowerCase().includes(q) ||
+        (p.matricula && p.matricula.toLowerCase().includes(q))
       );
     }
 
@@ -125,8 +270,23 @@ export default function PrestadoresListApp() {
       );
     }
 
-    return result;
-  }, [prestadores, search, sedeFilter]);
+    // Ordenamiento
+    const sorted = [...result];
+    if (sortBy === 'trayectoria_desc') {
+      sorted.sort((a, b) => {
+        const trayA = getPrestadorTrayectoria(a)?.dias || 0;
+        const trayB = getPrestadorTrayectoria(b)?.dias || 0;
+        return trayB - trayA;
+      });
+    } else if (sortBy === 'nombre_asc') {
+      sorted.sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo, 'es'));
+    } else {
+      // 'recientes': creado más recientemente
+      sorted.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
+    return sorted;
+  }, [prestadores, search, sedeFilter, sortBy, padronSalus]);
 
   // ── Loading state ──
   if (loading) {
@@ -200,6 +360,16 @@ export default function PrestadoresListApp() {
             <option key={s} value={s}>{shortenSede(s)}</option>
           ))}
         </select>
+        <select
+          className="prestadores-list__filter-select"
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value)}
+          style={{ minWidth: '220px', fontWeight: 600, color: '#1E5FA6' }}
+        >
+          <option value="recientes">Ordenar: Incorporaciones recientes</option>
+          <option value="trayectoria_desc">Ordenar: Mayor trayectoria en Sanatorio</option>
+          <option value="nombre_asc">Ordenar: Alfabético (A → Z)</option>
+        </select>
       </div>
 
       {/* Grid */}
@@ -259,6 +429,37 @@ export default function PrestadoresListApp() {
                     ))}
                   </div>
                 )}
+
+                {/* Trayectoria y Modalidad Guardia */}
+                {(() => {
+                  const tray = getPrestadorTrayectoria(p);
+                  if (!tray) return null;
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '0.35rem' }}>
+                      <div
+                        className={`prestadores-list__trayectoria ${tray.esNuevo ? 'prestadores-list__trayectoria--nuevo' : ''}`}
+                        style={{ marginTop: 0 }}
+                        title={tray.detalle}
+                      >
+                        <span className="prestadores-list__trayectoria-icon">
+                          {tray.esNuevo ? '🌱' : '⏱️'}
+                        </span>
+                        <span>
+                          Trayectoria: <strong>{tray.texto}</strong>
+                          {tray.desde && <span className="prestadores-list__trayectoria-desde"> • Desde {tray.desde}</span>}
+                        </span>
+                      </div>
+                      {tray.esSoloGuardia && (
+                        <div
+                          className="prestadores-list__guardia-chip"
+                          title={`Médico exclusivo de Guardia en SALUS${tray.agendasGuardia ? `: ${tray.agendasGuardia}` : ''}`}
+                        >
+                          🚨 Solo Guardia
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Comment indicator */}
                 {p.comentarios && (

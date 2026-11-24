@@ -13,6 +13,44 @@ function getInitials(name) {
     .join('');
 }
 
+function normalizeStr(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\bde\s+[a-z]+$/g, ' ')
+    .replace(/\b(dra?|lic|med|esp|mg|magister)\b\.?/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getTokens(s) {
+  const stop = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e']);
+  return normalizeStr(s)
+    .split(' ')
+    .filter(t => t.length > 1 && !stop.has(t));
+}
+
+function extractAllNumbers(matStr) {
+  if (!matStr) return [];
+  return String(matStr).match(/\d{3,6}/g) || [];
+}
+
+function formatAntiguedad(primeraIso, ultimaIso) {
+  if (!primeraIso) return '';
+  const d1 = new Date(primeraIso + 'T00:00:00');
+  const d2 = ultimaIso ? new Date(ultimaIso + 'T00:00:00') : new Date();
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '';
+  const diffDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+  const years = Math.floor(diffDays / 365);
+  const months = Math.floor((diffDays % 365) / 30);
+  if (years > 0 && months > 0) return `${years}a ${months}m`;
+  if (years > 0) return `${years} ${years === 1 ? 'año' : 'años'}`;
+  if (months > 0) return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+  return `${diffDays}d`;
+}
+
 function shortenSede(sede) {
   if (sede.includes('432')) return 'Sede 1';
   if (sede.includes('433')) return 'Sede 2';
@@ -44,7 +82,7 @@ const Accordion = ({ title, count, children, isOpen, onClick }) => {
   );
 };
 
-const PrestadorCard = ({ prestador }) => {
+const PrestadorCard = ({ prestador, trayectoria }) => {
   return (
     <div className="prestador-card">
       <div className="prestador-card-header">
@@ -64,6 +102,15 @@ const PrestadorCard = ({ prestador }) => {
           {prestador.matricula && (
             <p className="prestador-matricula">Mat. {prestador.matricula}</p>
           )}
+          {trayectoria && (
+            <span
+              className={`prestador-trayectoria ${trayectoria.esNuevo ? 'prestador-trayectoria--nuevo' : ''}`}
+              title={trayectoria.detalle}
+            >
+              {trayectoria.esNuevo ? '🌱' : '⏱️'} Trayectoria: <strong>{trayectoria.texto}</strong>
+              {trayectoria.desde && <span> ({trayectoria.desde})</span>}
+            </span>
+          )}
         </div>
       </div>
       {prestador.comentarios && (
@@ -75,6 +122,7 @@ const PrestadorCard = ({ prestador }) => {
 
 export default function PrestadoresDirectorioApp() {
   const [prestadores, setPrestadores] = useState([]);
+  const [padronSalus, setPadronSalus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeSede, setActiveSede] = useState('');
@@ -84,37 +132,112 @@ export default function PrestadoresDirectorioApp() {
   useEffect(() => {
     async function fetchPrestadores() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('nuevos_prestadores')
-        .select('*')
-        .order('nombre_completo', { ascending: true });
+      try {
+        const [prestadoresRes, salusRes] = await Promise.all([
+          supabase.from('nuevos_prestadores').select('*').order('nombre_completo', { ascending: true }),
+          fetch('/data/padron_medicos_salus.json').then(r => r.ok ? r.json() : { profesionales: [] }).catch(() => ({ profesionales: [] }))
+        ]);
 
-      if (error) {
-        console.error('Error fetching prestadores:', error);
-      } else {
-        setPrestadores(data || []);
-        
-        // Determinar sede por defecto (la que tenga más prestadores o la primera)
-        if (data && data.length > 0) {
-           const sedeCounts = {};
-           data.forEach(p => {
-             if (p.sedes) {
-               p.sedes.forEach(s => {
-                 sedeCounts[s] = (sedeCounts[s] || 0) + 1;
-               });
-             }
-           });
-           const sortedSedes = Object.keys(sedeCounts).sort((a, b) => sedeCounts[b] - sedeCounts[a]);
-           if (sortedSedes.length > 0) {
-             setActiveSede(sortedSedes[0]);
-           }
+        if (prestadoresRes.error) {
+          console.error('Error fetching prestadores:', prestadoresRes.error);
+        } else {
+          const data = prestadoresRes.data || [];
+          setPrestadores(data);
+          
+          if (data && data.length > 0) {
+            const sedeCounts = {};
+            data.forEach(p => {
+              if (p.sedes) {
+                p.sedes.forEach(s => {
+                  sedeCounts[s] = (sedeCounts[s] || 0) + 1;
+                });
+              }
+            });
+            const sortedSedes = Object.keys(sedeCounts).sort((a, b) => sedeCounts[b] - sedeCounts[a]);
+            if (sortedSedes.length > 0) {
+              setActiveSede(sortedSedes[0]);
+            }
+          }
         }
+        setPadronSalus(salusRes.profesionales || []);
+      } catch (err) {
+        console.error('Error loading directorio data:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     fetchPrestadores();
   }, []);
+
+  // Helper para trayectoria
+  const getTrayectoria = (prestador) => {
+    if (prestador.trayectoria) {
+      return { texto: prestador.trayectoria, desde: null, detalle: prestador.trayectoria, esNuevo: false };
+    }
+    if (!padronSalus || padronSalus.length === 0) return null;
+
+    const pTokens = getTokens(prestador.nombre_completo);
+    const pNums = extractAllNumbers(prestador.matricula);
+    const pMP4 = pNums.filter(n => n.length === 4);
+
+    let bestDoc = null;
+    let bestScore = 0;
+
+    for (const doc of padronSalus) {
+      if (doc.es_generico) continue;
+      const rawParts = String(doc.nombre || '').split(',');
+      const surnameTokens = getTokens(rawParts[0] || '');
+      const givenTokens = getTokens(rawParts[1] || '');
+      if (surnameTokens.length === 0) continue;
+
+      const primarySurname = surnameTokens[0];
+      if (!pTokens.includes(primarySurname)) continue;
+
+      const docNums = extractAllNumbers(doc.matricula);
+      const docMP4 = docNums.filter(n => n.length === 4);
+      const mpOverlap = docNums.some(n => pNums.includes(n));
+
+      if (docMP4.length > 0 && pMP4.length > 0 && !mpOverlap) continue;
+
+      const pGivenCandidates = pTokens.filter(t => !surnameTokens.includes(t));
+      let score = 0;
+
+      if (mpOverlap) {
+        if (pGivenCandidates.length > 0 && givenTokens.length > 0) {
+          if (pGivenCandidates.some(t => givenTokens.includes(t))) score = 100;
+          else score = 85;
+        } else {
+          score = 95;
+        }
+      } else if (pTokens.every(t => [...surnameTokens, ...givenTokens].includes(t))) {
+        score = 70 + pTokens.length * 5;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestDoc = doc;
+      }
+    }
+
+    if (bestDoc && bestScore >= 70 && bestDoc.primera_atencion) {
+      const antiguedad = formatAntiguedad(bestDoc.primera_atencion, bestDoc.ultima_atencion);
+      const anioInicio = bestDoc.primera_atencion.split('-')[0];
+      return {
+        texto: antiguedad,
+        desde: `Desde ${anioInicio}`,
+        detalle: `En Sanatorio Argentino desde ${bestDoc.primera_atencion}`,
+        esNuevo: false,
+      };
+    }
+
+    return {
+      texto: 'Ingreso Reciente',
+      desde: null,
+      detalle: 'Incorporación reciente al Sanatorio',
+      esNuevo: true,
+    };
+  };
 
   // Procesar y agrupar datos
   const { allSedes, groupedData } = useMemo(() => {
@@ -236,7 +359,11 @@ export default function PrestadoresDirectorioApp() {
               onClick={() => toggleAccordion(especialidad)}
             >
               {prestadoresList.map(prestador => (
-                <PrestadorCard key={prestador.id} prestador={prestador} />
+                <PrestadorCard
+                  key={prestador.id}
+                  prestador={prestador}
+                  trayectoria={getTrayectoria(prestador)}
+                />
               ))}
             </Accordion>
           ))
