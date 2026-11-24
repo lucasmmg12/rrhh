@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import {
   Stethoscope, Search, Download, RefreshCw, Clock, CheckCircle2,
@@ -184,20 +185,51 @@ function EspecialidadSearchSelect({ options, value, onChange }) {
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState('todas'); // 'todas' | 'medica' | 'apoyo'
   const [sortMode, setSortMode] = useState('count'); // 'count' | 'az'
+  const [popoverStyle, setPopoverStyle] = useState({});
   const wrapRef = useRef(null);
+  const popoverRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
+    function updatePosition() {
+      if (!wrapRef.current) return;
+      const rect = wrapRef.current.getBoundingClientRect();
+      const popoverWidth = Math.min(375, window.innerWidth - 24);
+      let left = rect.left;
+      if (left + popoverWidth > window.innerWidth - 12) {
+        left = Math.max(12, window.innerWidth - popoverWidth - 12);
+      }
+      const spaceBelow = window.innerHeight - rect.bottom - 12;
+      const top = spaceBelow >= 260 ? rect.bottom + 6 : Math.max(12, rect.top - 410);
+      setPopoverStyle({
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        width: `${popoverWidth}px`,
+        zIndex: 99999,
+      });
+    }
+
     function handleOutside(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      const inTrigger = wrapRef.current && wrapRef.current.contains(e.target);
+      const inPopover = popoverRef.current && popoverRef.current.contains(e.target);
+      if (!inTrigger && !inPopover) {
         setOpen(false);
       }
     }
+
     if (open) {
+      updatePosition();
       document.addEventListener('mousedown', handleOutside);
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
       setTimeout(() => inputRef.current?.focus(), 20);
     }
-    return () => document.removeEventListener('mousedown', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
   }, [open]);
 
   const enrichedOptions = useMemo(() => {
@@ -275,8 +307,12 @@ function EspecialidadSearchSelect({ options, value, onChange }) {
         </span>
       </button>
 
-      {open && (
-        <div className="pm-esp-combo__popover">
+      {open && createPortal(
+        <div
+          ref={popoverRef}
+          className="pm-esp-combo__popover"
+          style={popoverStyle}
+        >
           <div className="pm-esp-combo__search-box">
             <Search size={14} style={{ position: 'absolute', left: '1.25rem', top: '53%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
             <input
@@ -404,7 +440,8 @@ function EspecialidadSearchSelect({ options, value, onChange }) {
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
