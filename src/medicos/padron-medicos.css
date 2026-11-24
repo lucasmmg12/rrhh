@@ -751,16 +751,16 @@
 .pm-sedes-row {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  flex-wrap: nowrap;
+  gap: 0.25rem;
+  flex-wrap: wrap;
 }
 
 .pm-sede-pill {
   display: inline-flex;
   align-items: center;
-  padding: 0.18rem 0.48rem;
+  padding: 0.14rem 0.4rem;
   border-radius: 5px;
-  font-size: 0.67rem;
+  font-size: 0.64rem;
   font-weight: 700;
   white-space: nowrap;
   line-height: 1.1;
@@ -796,13 +796,13 @@
 .pm-matrix-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1320px;
+  min-width: 960px;
 }
 
 .pm-matrix-table thead th {
   background: #f8fafc;
-  padding: 0.7rem 0.6rem;
-  font-size: 0.69rem;
+  padding: 0.65rem 0.45rem;
+  font-size: 0.67rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -814,9 +814,9 @@
 
 .pm-matrix-table thead th.pm-year-th {
   text-align: center;
-  width: 54px;
-  min-width: 54px;
-  padding: 0.7rem 0.2rem;
+  width: 40px;
+  min-width: 36px;
+  padding: 0.65rem 0.12rem;
   color: #1E5FA6;
   background: #f1f5f9;
   border-left: 1px solid #e2e8f0;
@@ -910,21 +910,23 @@
 .pm-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.79rem;
-  min-width: 1340px;
+  font-size: 0.77rem;
+  table-layout: fixed;
 }
 
 .pm-table thead th {
   background: #f8fafc;
-  padding: 0.75rem 0.75rem;
+  padding: 0.68rem 0.6rem;
   text-align: left;
-  font-size: 0.69rem;
+  font-size: 0.67rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: #475569;
   border-bottom: 2px solid #e2e8f0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pm-table tbody tr {
@@ -938,9 +940,23 @@
 }
 
 .pm-table td {
-  padding: 0.62rem 0.75rem;
+  padding: 0.58rem 0.6rem;
   vertical-align: middle;
+  overflow: hidden;
+}
+
+.pm-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pm-cell-truncate {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 /* Top Práctica & Obra Social Mini Card */
@@ -948,7 +964,8 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-width: 265px;
+  width: 100%;
+  min-width: 0;
 }
 
 .pm-top-line {

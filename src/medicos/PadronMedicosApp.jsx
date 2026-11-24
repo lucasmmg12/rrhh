@@ -1408,24 +1408,28 @@ export default function PadronMedicosApp() {
       )}
 
       {/* ============================================================
-          VISTA 2 MEJORADA: BASE DE DATOS DE MÉDICOS (TABLA COMPACTA Y LIMPIA)
+          VISTA 2 OPTIMIZADA: BASE DE DATOS DE MÉDICOS (SIN SCROLL HORIZONTAL)
          ============================================================ */}
       {activeTab === 'directorio' && (
         <div className="pm-table-card">
           <div className="pm-table-scroll">
             <table className="pm-table">
+              <colgroup>
+                <col style={{ width: '25%' }} />
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '17%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '6%' }} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Médico / Identificación</th>
-                  <th>Especialidad</th>
-                  <th>CUIL / Razón Social</th>
-                  <th>Dirección / Seguro RC</th>
-                  <th>Estado y Última Atención</th>
-                  <th>Período de Atención (Desde → Hasta)</th>
-                  <th style={{ textAlign: 'right' }}>Volumen Histórico</th>
-                  <th>Sedes de Atención</th>
-                  <th>Práctica #1 y Obra Social #1</th>
-                  <th style={{ textAlign: 'center' }}>Ficha 360°</th>
+                  <th>Médico / 1ª Especialidad</th>
+                  <th>Legajo Fiscal, Dirección & Seguro</th>
+                  <th>Estado & Período</th>
+                  <th>Actividad & Sedes</th>
+                  <th>Práctica #1 & Obra Social #1</th>
+                  <th style={{ textAlign: 'center' }}>360°</th>
                 </tr>
               </thead>
               <tbody>
@@ -1449,23 +1453,62 @@ export default function PadronMedicosApp() {
 
                   return (
                     <tr key={doc.id_personal} onClick={() => setSelectedDoctor(doc)}>
-                      {/* Col 1: Avatar + Nombre en 1 línea + Chips MP / DNI / SSS */}
+                      {/* Col 1: Avatar + Nombre + Guardia + 1ª Especialidad + Ver más + IDs */}
                       <td>
-                        <div className="pm-doc-cell">
-                          <DoctorAvatar doc={doc} size={38} />
-                          <div>
-                            <div className="pm-doc-name" title={doc.nombre} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', maxWidth: '280px' }}>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</span>
+                        <div className="pm-doc-cell" style={{ minWidth: 0, gap: '0.55rem' }}>
+                          <DoctorAvatar doc={doc} size={36} />
+                          <div className="pm-cell-stack" style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
+                              <span
+                                className="pm-cell-truncate"
+                                style={{ fontWeight: 800, fontSize: '0.79rem', color: '#0f172a' }}
+                                title={doc.nombre}
+                              >
+                                {doc.nombre}
+                              </span>
                               {doc.es_solo_guardia && (
                                 <span
                                   className="pm-guardia-badge"
                                   title={`Médico exclusivo de Guardia (${doc.pct_guardia}% en agendas Guardias: ${(doc.agendas_guardia || []).map(a => a.nombre).join(', ')})`}
                                 >
-                                  🚨 Solo Guardia
+                                  🚨 Guardia
                                 </span>
                               )}
                             </div>
-                            <div className="pm-doc-meta">
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+                              <span className="pm-esp-badge" style={{ fontSize: '0.67rem', padding: '0.12rem 0.45rem' }}>
+                                {formatEspDisplayName(doc.especialidad_principal)}
+                              </span>
+                              {(doc.especialidades_secundarias?.length || (doc.especialidades?.length || 0) - 1) > 0 && (
+                                <button
+                                  type="button"
+                                  className="pm-ver-mas-btn"
+                                  onClick={e => toggleDoctorSecundarias(doc.id_personal, e)}
+                                  title="Ver otras especialidades secundarias de este profesional"
+                                >
+                                  {expandedEspIds[doc.id_personal]
+                                    ? 'Ocultar'
+                                    : `Ver más (+${(doc.especialidades_secundarias || doc.especialidades.slice(1)).length})`}
+                                </button>
+                              )}
+                            </div>
+
+                            {expandedEspIds[doc.id_personal] && (
+                              <div className="pm-sec-esp-list" onClick={e => e.stopPropagation()}>
+                                {(doc.especialidades_secundarias || (doc.especialidades || []).slice(1)).map(sec => (
+                                  <span
+                                    key={sec.nombre}
+                                    className="pm-sec-esp-chip"
+                                    title={`${sec.nombre}: ${(sec.cantidad || 0).toLocaleString('es-AR')} atenciones (${sec.porcentaje || 0}%)`}
+                                  >
+                                    {sec.nombre} ({(sec.cantidad || 0).toLocaleString('es-AR')})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="pm-doc-meta" style={{ flexWrap: 'wrap', gap: '0.25rem', marginTop: 0 }}>
                               <span className="pm-meta-chip">
                                 {doc.matricula ? `MP ${doc.matricula}` : 'Sin MP'}
                               </span>
@@ -1482,154 +1525,106 @@ export default function PadronMedicosApp() {
                         </div>
                       </td>
 
-                      {/* Col 2: 1ª Especialidad Principal + botón Ver más */}
+                      {/* Col 2: CUIL + Razón Social + Dirección + Seguro RC */}
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <span className="pm-esp-badge">
-                            {formatEspDisplayName(doc.especialidad_principal)}
-                          </span>
-                          {(doc.especialidades_secundarias?.length || (doc.especialidades?.length || 0) - 1) > 0 && (
-                            <button
-                              type="button"
-                              className="pm-ver-mas-btn"
-                              onClick={e => toggleDoctorSecundarias(doc.id_personal, e)}
-                              title="Ver otras especialidades secundarias de este profesional"
-                            >
-                              {expandedEspIds[doc.id_personal]
-                                ? 'Ocultar'
-                                : `Ver más (+${(doc.especialidades_secundarias || doc.especialidades.slice(1)).length})`}
-                            </button>
-                          )}
-                        </div>
-                        {expandedEspIds[doc.id_personal] && (
-                          <div className="pm-sec-esp-list" onClick={e => e.stopPropagation()}>
-                            {(doc.especialidades_secundarias || (doc.especialidades || []).slice(1)).map(sec => (
+                        <div className="pm-cell-stack">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
+                            <span style={{ fontWeight: 800, fontSize: '0.73rem', color: doc.cuil ? '#1e3a8a' : '#94a3b8', flexShrink: 0 }}>
+                              {doc.cuil || 'Sin CUIL'}
+                            </span>
+                            {doc.razon_social && (
                               <span
-                                key={sec.nombre}
-                                className="pm-sec-esp-chip"
-                                title={`${sec.nombre}: ${(sec.cantidad || 0).toLocaleString('es-AR')} atenciones (${sec.porcentaje || 0}%)`}
+                                className="pm-cell-truncate"
+                                style={{ fontSize: '0.67rem', color: '#64748b' }}
+                                title={`Razón Social: ${doc.razon_social}`}
                               >
-                                {sec.nombre} ({(sec.cantidad || 0).toLocaleString('es-AR')})
+                                • {doc.razon_social}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className="pm-cell-truncate"
+                            style={{ fontSize: '0.71rem', fontWeight: 600, color: '#1e293b' }}
+                            title={doc.direccion || 'Sin dirección registrada'}
+                          >
+                            {doc.direccion ? `📍 ${doc.direccion}` : '📍 Sin dirección'}
+                          </span>
+                          <span
+                            className="pm-cell-truncate"
+                            style={{ fontSize: '0.68rem', color: doc.seguro ? '#0369a1' : '#94a3b8', fontWeight: 600 }}
+                            title={doc.seguro ? `${doc.seguro}${doc.seguro_vencimiento ? ` (Vto: ${formatDateAR(doc.seguro_vencimiento)})` : ''}` : 'Sin seguro RC en legajo'}
+                          >
+                            {doc.seguro
+                              ? `🛡️ ${doc.seguro}${doc.seguro_vencimiento ? ` (Vto: ${formatDateAR(doc.seguro_vencimiento)})` : ''}`
+                              : '🛡️ Sin seguro RC'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Col 3: Estado + Última vez + Período + Trayectoria */}
+                      <td>
+                        <div className="pm-cell-stack">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            <span className={`pm-status ${statusClass}`} style={{ padding: '0.12rem 0.48rem', fontSize: '0.67rem' }}>
+                              <span className="pm-status__dot" style={{ background: dotColor }} />
+                              {doc.estado_actividad}
+                            </span>
+                            <span style={{ fontSize: '0.67rem', color: '#64748b', fontWeight: 600 }}>
+                              {formatTiempoSinAtender(doc.dias_sin_atender)}
+                            </span>
+                          </div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.28rem', fontSize: '0.71rem', color: '#334155', fontWeight: 600 }}>
+                            <span>{formatDateAR(doc.primera_atencion)}</span>
+                            <ArrowRight size={11} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                            <strong style={{ color: doc.estado_actividad === 'Activo' ? '#15803d' : '#0f172a' }}>
+                              {formatDateAR(doc.ultima_atencion)}
+                            </strong>
+                          </div>
+                          <span className="pm-cell-truncate" style={{ fontSize: '0.67rem', color: '#64748b' }}>
+                            Trayectoria: <strong>{formatAntiguedad(doc.primera_atencion, doc.ultima_atencion)}</strong> ({doc.meses_activos}m)
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Col 4: Volumen Histórico + Pacientes Únicos + Sedes */}
+                      <td>
+                        <div className="pm-cell-stack">
+                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                            {doc.total_atenciones.toLocaleString('es-AR')}{' '}
+                            <span style={{ fontSize: '0.66rem', fontWeight: 500, color: '#64748b' }}>atenc.</span>
+                          </div>
+                          <span className="pm-cell-truncate" style={{ fontSize: '0.67rem', color: '#475569', fontWeight: 600 }}>
+                            👥 {doc.pacientes_unicos.toLocaleString('es-AR')} pac. (~{doc.promedio_por_mes_activo}/m)
+                          </span>
+                          <div className="pm-sedes-row" style={{ marginTop: '1px' }}>
+                            {(doc.sedes || []).map(s => (
+                              <span
+                                key={s.sede}
+                                className={`pm-sede-pill ${s.sede === 'SANTA FE' ? 'pm-sede-pill--sf' : 'pm-sede-pill--sl'}`}
+                                title={`${s.sede}: ${s.cantidad.toLocaleString('es-AR')} atenciones (Última: ${formatDateAR(s.ultima_vez)})`}
+                              >
+                                {shortenSedeName(s.sede)}
                               </span>
                             ))}
                           </div>
-                        )}
-                      </td>
-
-                      {/* Col 3: CUIL / Razón Social */}
-                      <td>
-                        {doc.cuil ? (
-                          <div style={{ fontWeight: 700, fontSize: '0.77rem', color: '#1e3a8a' }}>
-                            {doc.cuil}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '0.73rem', color: '#94a3b8' }}>Sin CUIL</div>
-                        )}
-                        <div
-                          style={{
-                            fontSize: '0.69rem',
-                            color: '#64748b',
-                            maxWidth: '185px',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={doc.razon_social || 'Sin razón social'}
-                        >
-                          {doc.razon_social || '—'}
                         </div>
                       </td>
 
-                      {/* Col 4: Dirección & Seguro RC */}
-                      <td>
-                        <div
-                          style={{
-                            fontSize: '0.74rem',
-                            fontWeight: 600,
-                            color: '#1e293b',
-                            maxWidth: '215px',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={doc.direccion || 'Sin dirección registrada'}
-                        >
-                          {doc.direccion ? `📍 ${doc.direccion}` : '—'}
-                        </div>
-                        <div style={{ fontSize: '0.69rem', color: doc.seguro ? '#0369a1' : '#94a3b8', marginTop: '2px', fontWeight: 600 }}>
-                          {doc.seguro
-                            ? `🛡️ ${doc.seguro}${doc.seguro_vencimiento ? ` (Vto: ${formatDateAR(doc.seguro_vencimiento)})` : ''}`
-                            : 'Sin seguro RC en legajo'}
-                        </div>
-                      </td>
-
-                      {/* Col 3: Estado Actual + Hace cuánto */}
-                      <td>
-                        <span className={`pm-status ${statusClass}`}>
-                          <span className="pm-status__dot" style={{ background: dotColor }} />
-                          {doc.estado_actividad}
-                        </span>
-                        <div style={{ fontSize: '0.71rem', color: '#64748b', marginTop: '3px', fontWeight: 600 }}>
-                          {formatTiempoSinAtender(doc.dias_sin_atender)}
-                        </div>
-                      </td>
-
-                      {/* Col 4: Período (Desde → Hasta) + Antigüedad */}
-                      <td>
-                        <div className="pm-period-box">
-                          <span style={{ color: '#475569', fontWeight: 600 }}>
-                            {formatDateAR(doc.primera_atencion)}
-                          </span>
-                          <ArrowRight size={12} style={{ color: '#94a3b8' }} />
-                          <strong style={{ color: doc.estado_actividad === 'Activo' ? '#15803d' : '#0f172a' }}>
-                            {formatDateAR(doc.ultima_atencion)}
-                          </strong>
-                        </div>
-                        <div style={{ fontSize: '0.69rem', color: '#64748b', marginTop: '3px' }}>
-                          Trayectoria: <strong>{formatAntiguedad(doc.primera_atencion, doc.ultima_atencion)}</strong> ({doc.meses_activos} meses activos)
-                        </div>
-                      </td>
-
-                      {/* Col 5: Volumen Histórico + Pacientes Únicos */}
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>
-                          {doc.total_atenciones.toLocaleString('es-AR')} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#64748b' }}>atenc.</span>
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>
-                          👥 {doc.pacientes_unicos.toLocaleString('es-AR')} pac. únicos (~{doc.promedio_por_mes_activo}/mes)
-                        </div>
-                      </td>
-
-                      {/* Col 6: Sedes en píldoras horizontales limpias */}
-                      <td>
-                        <div className="pm-sedes-row">
-                          {(doc.sedes || []).map(s => (
-                            <span
-                              key={s.sede}
-                              className={`pm-sede-pill ${s.sede === 'SANTA FE' ? 'pm-sede-pill--sf' : 'pm-sede-pill--sl'}`}
-                              title={`${s.sede}: ${s.cantidad.toLocaleString('es-AR')} atenciones (Última: ${formatDateAR(s.ultima_vez)})`}
-                            >
-                              {shortenSedeName(s.sede)}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* Col 7: Top Práctica #1 y Top Obra Social #1 bien alineados */}
+                      {/* Col 5: Top Práctica #1 y Top Obra Social #1 */}
                       <td>
                         <div className="pm-top-pair">
                           {topPrac && (
                             <div className="pm-top-line" title={`Práctica principal: ${topPrac.nombre} (${topPrac.cantidad.toLocaleString('es-AR')} atenciones)`}>
-                              <span className="pm-top-line__name">🩺 {topPrac.nombre}</span>
-                              <span className="pm-top-line__pct">{topPrac.porcentaje}%</span>
+                              <span className="pm-top-line__name" style={{ fontSize: '0.69rem' }}>🩺 {topPrac.nombre}</span>
+                              <span className="pm-top-line__pct" style={{ fontSize: '0.64rem' }}>{topPrac.porcentaje}%</span>
                             </div>
                           )}
                           {topOS && (
                             <div className="pm-top-line" title={`Obra Social principal: ${topOS.nombre} (${topOS.cantidad.toLocaleString('es-AR')} atenciones)`}>
-                              <span className="pm-top-line__name" style={{ color: '#475569', fontWeight: 500 }}>
+                              <span className="pm-top-line__name" style={{ color: '#475569', fontWeight: 500, fontSize: '0.69rem' }}>
                                 💳 {topOS.nombre}
                               </span>
-                              <span className="pm-top-line__pct" style={{ background: '#f1f5f9', color: '#475569' }}>
+                              <span className="pm-top-line__pct" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.64rem' }}>
                                 {topOS.porcentaje}%
                               </span>
                             </div>
@@ -1637,19 +1632,20 @@ export default function PadronMedicosApp() {
                         </div>
                       </td>
 
-                      {/* Col 8: Botón Ver 360° */}
-                      <td style={{ textAlign: 'center' }}>
+                      {/* Col 6: Botón 360° compacto */}
+                      <td style={{ textAlign: 'center', padding: '0.45rem 0.35rem' }}>
                         <button
                           type="button"
                           className="pm-btn pm-btn--secondary"
-                          style={{ padding: '0.35rem 0.7rem', fontSize: '0.73rem', color: '#1E5FA6', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                          style={{ padding: '0.32rem 0.5rem', fontSize: '0.7rem', color: '#1E5FA6', borderColor: '#bfdbfe', background: '#eff6ff' }}
                           onClick={e => {
                             e.stopPropagation();
                             setSelectedDoctor(doc);
                           }}
+                          title="Abrir Ficha 360° completa"
                         >
                           <Eye size={13} />
-                          Ver 360°
+                          360°
                         </button>
                       </td>
                     </tr>
