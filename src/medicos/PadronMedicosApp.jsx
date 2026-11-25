@@ -624,8 +624,9 @@ export default function PadronMedicosApp() {
     const conDireccion = baseList.filter(p => Boolean(p.direccion)).length;
     const conSss = baseList.filter(p => Boolean(p.nro_sss)).length;
     const soloGuardia = baseList.filter(p => Boolean(p.es_solo_guardia)).length;
+    const guardiaConvenios = baseList.filter(p => Boolean(p.guardia_oficial_convenios)).length;
     const mixtoGuardia = baseList.filter(p => p.modalidad_atencion === 'Consultorio y Guardia').length;
-    const soloConsultorio = baseList.filter(p => !p.es_solo_guardia && (p.atenciones_guardia || 0) === 0).length;
+    const soloConsultorio = baseList.filter(p => !p.es_solo_guardia && !p.guardia_oficial_convenios && (p.atenciones_guardia || 0) === 0).length;
 
     return {
       total,
@@ -640,6 +641,7 @@ export default function PadronMedicosApp() {
       conDireccion,
       conSss,
       soloGuardia,
+      guardiaConvenios,
       mixtoGuardia,
       soloConsultorio,
       pctActivos: total > 0 ? ((activos / total) * 100).toFixed(1) : '0.0',
@@ -653,8 +655,9 @@ export default function PadronMedicosApp() {
       if (onlyWithPhoto && !p.foto_url) return false;
       if (filterEstado && p.estado_actividad !== filterEstado) return false;
       if (filterModalidad === 'solo_guardia' && !p.es_solo_guardia) return false;
+      if (filterModalidad === 'guardia_convenios' && !p.guardia_oficial_convenios) return false;
       if (filterModalidad === 'excluir_guardia' && p.es_solo_guardia) return false;
-      if (filterModalidad === 'consultorio' && (p.es_solo_guardia || (p.atenciones_guardia || 0) > 0)) return false;
+      if (filterModalidad === 'consultorio' && (p.es_solo_guardia || p.guardia_oficial_convenios || (p.atenciones_guardia || 0) > 0)) return false;
       if (filterModalidad === 'mixto' && p.modalidad_atencion !== 'Consultorio y Guardia') return false;
       if (filterSeguro === 'con_seguro' && !p.seguro) return false;
       if (filterSeguro === 'sin_seguro' && p.seguro) return false;
@@ -818,6 +821,10 @@ export default function PadronMedicosApp() {
       'Es Solo de Guardia': d.es_solo_guardia ? 'Sí' : 'No',
       '% Atenciones en Guardia': d.pct_guardia !== undefined ? `${d.pct_guardia}%` : '0%',
       'Agendas de Guardia (SALUS)': (d.agendas_guardia || []).map(a => `${a.nombre} (${a.cantidad})`).join(' | '),
+      'Guardia Oficial (Convenios)': d.guardia_oficial_convenios ? 'Sí' : 'No',
+      'Servicio Guardia (Convenios)': d.guardia_servicio || '',
+      'Franja Horaria Guardia': d.guardia_franja || '',
+      'Cargo Guardia': d.guardia_cargo || '',
       'Actividad: Consultorio Externo': d.actividades_salus?.consultorio_externo || 0,
       'Actividad: Guardia': d.actividades_salus?.guardia || 0,
       'Actividad: Internación': d.actividades_salus?.internacion || 0,
@@ -1091,6 +1098,7 @@ export default function PadronMedicosApp() {
             title="Filtrar según si el médico atiende en Consultorio o en Agendas de Guardia"
           >
             <option value="">Modalidad: Todas</option>
+            <option value="guardia_convenios">📋 Nómina Guardia Convenios ({kpis.guardiaConvenios})</option>
             <option value="solo_guardia">🚨 Solo de Guardia ({kpis.soloGuardia})</option>
             <option value="excluir_guardia">🚫 Excluir Solo Guardia ({kpis.total - kpis.soloGuardia})</option>
             <option value="consultorio">🏥 Solo Consultorio / Programado ({kpis.soloConsultorio})</option>
@@ -2023,6 +2031,20 @@ export default function PadronMedicosApp() {
                           : selectedDoctor.modalidad_atencion || 'Atención Programada'}
                       </div>
                     </div>
+
+                    {selectedDoctor.guardia_oficial_convenios && (
+                      <div className="pm-box" style={{ padding: '0.85rem 1rem', borderLeft: '4px solid #D97706', background: '#fffbeb' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
+                          📋 Guardia Oficial (Convenios)
+                        </div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#78350f', marginTop: '3px' }}>
+                          {selectedDoctor.guardia_servicio} • {selectedDoctor.guardia_franja}
+                        </div>
+                        <div style={{ fontSize: '0.71rem', color: '#b45309', marginTop: '2px', fontWeight: 600 }}>
+                          {selectedDoctor.guardia_cargo ? `👑 ${selectedDoctor.guardia_cargo}` : 'Médico de Guardia Activo'}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Mapa de 6 Actividades Asistenciales (Bloque E) */}
