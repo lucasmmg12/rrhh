@@ -626,7 +626,7 @@ export default function PadronMedicosApp() {
     const soloGuardia = baseList.filter(p => Boolean(p.es_solo_guardia)).length;
     const guardiaConvenios = baseList.filter(p => Boolean(p.guardia_oficial_convenios)).length;
     const mixtoGuardia = baseList.filter(p => p.modalidad_atencion === 'Consultorio y Guardia').length;
-    const soloConsultorio = baseList.filter(p => !p.es_solo_guardia && !p.guardia_oficial_convenios && (p.atenciones_guardia || 0) === 0).length;
+    const soloConsultorio = baseList.filter(p => p.modalidad_atencion === 'Consultorio / Programado' || (!p.es_solo_guardia && !p.guardia_oficial_convenios && p.modalidad_atencion !== 'Consultorio y Guardia')).length;
 
     return {
       total,
@@ -657,7 +657,7 @@ export default function PadronMedicosApp() {
       if (filterModalidad === 'solo_guardia' && !p.es_solo_guardia) return false;
       if (filterModalidad === 'guardia_convenios' && !p.guardia_oficial_convenios) return false;
       if (filterModalidad === 'excluir_guardia' && p.es_solo_guardia) return false;
-      if (filterModalidad === 'consultorio' && (p.es_solo_guardia || p.guardia_oficial_convenios || (p.atenciones_guardia || 0) > 0)) return false;
+      if (filterModalidad === 'consultorio' && p.modalidad_atencion !== 'Consultorio / Programado') return false;
       if (filterModalidad === 'mixto' && p.modalidad_atencion !== 'Consultorio y Guardia') return false;
       if (filterSeguro === 'con_seguro' && !p.seguro) return false;
       if (filterSeguro === 'sin_seguro' && p.seguro) return false;
@@ -2191,7 +2191,11 @@ export default function PadronMedicosApp() {
                       {selectedDoctor.agendas_guardia?.length > 0 && (
                         <div>
                           <h4 className="pm-box__title" style={{ marginBottom: '0.5rem' }}>
-                            <span>🚨 Agendas de Guardia ({selectedDoctor.pct_guardia}%)</span>
+                            <span>
+                              {selectedDoctor.guardia_historica
+                                ? `📜 Guardias Históricas (sin guardias en el último año)`
+                                : `🚨 Agendas de Guardia (${selectedDoctor.pct_guardia}%)`}
+                            </span>
                           </h4>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                             {selectedDoctor.agendas_guardia.map(ag => (
