@@ -488,10 +488,11 @@ export default function PadronMedicosApp() {
   const [includeGenericos, setIncludeGenericos] = useState(false);
   const [sortBy, setSortBy] = useState('ultima_desc');
 
-  // Expansión de especialidades secundarias ("Ver más")
+  // Expansión de especialidades secundarias ("Ver más") y pestaña activa de Ficha 360°
   const [expandedEspIds, setExpandedEspIds] = useState({});
   const [showSecundariosPanel, setShowSecundariosPanel] = useState(false);
   const [modalShowSecundarias, setModalShowSecundarias] = useState(false);
+  const [modalTab, setModalTab] = useState('perfil'); // 'perfil' | 'legajo' | 'convenios'
 
   function toggleDoctorSecundarias(idPersonal, e) {
     if (e) e.stopPropagation();
@@ -659,6 +660,12 @@ export default function PadronMedicosApp() {
       if (filterSeguro === 'sin_seguro' && p.seguro) return false;
       if (filterSeguro === 'con_cuil' && !p.cuil) return false;
       if (filterSeguro === 'con_sss' && !p.nro_sss) return false;
+      if (filterSeguro === 'internacion' && !(p.actividades_salus?.internacion > 0)) return false;
+      if (filterSeguro === 'quirofano' && !(p.actividades_salus?.quirofano > 0)) return false;
+      if (filterSeguro === 'interconsultas' && !(p.actividades_salus?.interconsultas > 0)) return false;
+      if (filterSeguro === 'alquila' && !p.alquila_consultorio) return false;
+      if (filterSeguro === 'liquida' && !(p.total_liquidaciones > 0)) return false;
+      if (filterSeguro === 'jefe_servicio' && !p.es_jefe_servicio) return false;
       if (filterSede) {
         const hasSede = (p.sedes || []).some(s => s.sede === filterSede);
         if (!hasSede) return false;
@@ -740,6 +747,7 @@ export default function PadronMedicosApp() {
 
   useEffect(() => {
     setModalShowSecundarias(false);
+    setModalTab('perfil');
   }, [selectedDoctor]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / PAGE_SIZE));
@@ -789,7 +797,9 @@ export default function PadronMedicosApp() {
     const wb = XLSX.utils.book_new();
     const rowsExport = filteredDoctors.map(d => ({
       'ID SALUS': d.id_personal,
+      'Código Alternativo': d.codigo_alternativo || '',
       'Médico / Prestador': d.nombre,
+      'Profesión / Grupo SALUS': d.profesion_salus || '',
       'Matrícula Provincial (MP)': d.matricula || '',
       'N° Superintendencia Salud (SSS)': d.nro_sss || '',
       'DNI': d.dni || d.nif || '',
@@ -802,10 +812,24 @@ export default function PadronMedicosApp() {
       'Vencimiento Seguro RC': formatDateAR(d.seguro_vencimiento),
       'Especialidad Principal (1ª)': d.especialidad_principal || '',
       'Especialidades Secundarias': (d.especialidades_secundarias || (d.especialidades || []).slice(1)).map(e => `${e.nombre} (${e.cantidad})`).join(', '),
+      'Jefe de Servicio (SALUS)': d.es_jefe_servicio ? 'Sí' : 'No',
+      'Servicios Asignados': (d.servicios_salus || []).map(s => s.nombre).join(' | '),
       'Modalidad de Atención': d.modalidad_atencion || (d.es_solo_guardia ? 'Solo Guardia' : 'Consultorio / Programado'),
       'Es Solo de Guardia': d.es_solo_guardia ? 'Sí' : 'No',
       '% Atenciones en Guardia': d.pct_guardia !== undefined ? `${d.pct_guardia}%` : '0%',
       'Agendas de Guardia (SALUS)': (d.agendas_guardia || []).map(a => `${a.nombre} (${a.cantidad})`).join(' | '),
+      'Actividad: Consultorio Externo': d.actividades_salus?.consultorio_externo || 0,
+      'Actividad: Guardia': d.actividades_salus?.guardia || 0,
+      'Actividad: Internación': d.actividades_salus?.internacion || 0,
+      'Actividad: Quirófano (CX)': d.actividades_salus?.quirofano || 0,
+      'Actividad: Interconsultas': d.actividades_salus?.interconsultas || 0,
+      'Actividad: Prácticas Médicas': d.actividades_salus?.practicas_medicas || 0,
+      'Liquida Honorarios en SALUS': d.total_liquidaciones > 0 ? 'Sí' : 'No',
+      'Última Liquidación SALUS': formatDateAR(d.ultima_liquidacion),
+      '% Gasto / Retención': d.pct_gasto_liquidacion ? `${d.pct_gasto_liquidacion}%` : '',
+      'Alquila Consultorio (SALUS)': d.alquila_consultorio ? 'Sí' : 'No',
+      'Detalle Alquiler': (d.alquileres_salus || []).map(a => `${a.sede}${a.importe > 0 ? ` ($${a.importe.toLocaleString('es-AR')})` : ''}`).join(' | '),
+      'Convenios Habilitados (PersonalMutuas)': d.convenios_habilitados_count || 0,
       'Estado de Actividad': d.estado_actividad,
       'Activo en Ficha SALUS': d.activo_salus ? 'Sí' : 'No',
       'Primera Atención (Desde)': formatDateAR(d.primera_atencion),
@@ -1100,13 +1124,23 @@ export default function PadronMedicosApp() {
             className="pm-select"
             value={filterSeguro}
             onChange={e => setFilterSeguro(e.target.value)}
-            title="Filtrar por datos legales y seguro profesional en SALUS"
+            title="Filtrar por actividades asistenciales, vinculación o legajo en SALUS"
           >
-            <option value="">Legajo SALUS: Todos</option>
-            <option value="con_cuil">🧾 Con CUIL / Razón Social ({kpis.conCuil})</option>
-            <option value="con_seguro">🛡️ Con Seguro RC cargado ({kpis.conSeguro})</option>
-            <option value="sin_seguro">⚠️ Sin Seguro RC registrado ({kpis.total - kpis.conSeguro})</option>
-            <option value="con_sss">🏛️ Con N° Superintendencia SSS ({kpis.conSss})</option>
+            <option value="">Perfil y Legajo: Todos</option>
+            <optgroup label="Actividades y Vinculación (SALUS)">
+              <option value="internacion">🛏️ Hace Internación</option>
+              <option value="quirofano">🔪 Hace Quirófano (CX)</option>
+              <option value="interconsultas">🩺 Hace Interconsultas</option>
+              <option value="alquila">🏢 Alquila Consultorio</option>
+              <option value="liquida">💵 Liquida Honorarios en SALUS</option>
+              <option value="jefe_servicio">👑 Jefe de Servicio</option>
+            </optgroup>
+            <optgroup label="Legajo Fiscal y Seguro">
+              <option value="con_cuil">🧾 Con CUIL / Razón Social ({kpis.conCuil})</option>
+              <option value="con_seguro">🛡️ Con Seguro RC cargado ({kpis.conSeguro})</option>
+              <option value="sin_seguro">⚠️ Sin Seguro RC ({kpis.total - kpis.conSeguro})</option>
+              <option value="con_sss">🏛️ Con N° Superintendencia SSS ({kpis.conSss})</option>
+            </optgroup>
           </select>
 
           <select
@@ -1870,14 +1904,21 @@ export default function PadronMedicosApp() {
                         🚨 Médico Exclusivo de Guardia ({selectedDoctor.pct_guardia}%)
                       </span>
                     )}
+                    {selectedDoctor.es_jefe_servicio && (
+                      <span className="pm-guardia-badge pm-guardia-badge--header" style={{ background: '#ede9fe', color: '#5b21b6', borderColor: '#ddd6fe' }}>
+                        👑 Jefe de Servicio
+                      </span>
+                    )}
                   </div>
 
-                  <div style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.92 }}>
-                    <span>🩺 <strong>{selectedDoctor.especialidad_principal}</strong></span>
-                    {selectedDoctor.matricula && <span>🪪 Matrícula MP: <strong>{selectedDoctor.matricula}</strong></span>}
-                    {selectedDoctor.nro_sss && <span>🏛️ N° Superintendencia (SSS): <strong>{selectedDoctor.nro_sss}</strong></span>}
+                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.79rem', opacity: 0.92 }}>
+                    {selectedDoctor.profesion_salus && <span>👤 <strong>{selectedDoctor.profesion_salus}</strong></span>}
+                    <span>🩺 <strong>{formatEspDisplayName(selectedDoctor.especialidad_principal)}</strong></span>
+                    {selectedDoctor.matricula && <span>🪪 MP: <strong>{selectedDoctor.matricula}</strong></span>}
+                    {selectedDoctor.codigo_alternativo && <span>🔖 Cód: <strong>{selectedDoctor.codigo_alternativo}</strong></span>}
+                    {selectedDoctor.nro_sss && <span>🏛️ SSS: <strong>{selectedDoctor.nro_sss}</strong></span>}
                     {selectedDoctor.cuil ? (
-                      <span>🧾 CUIL/CUIT: <strong>{selectedDoctor.cuil}</strong></span>
+                      <span>🧾 CUIL: <strong>{selectedDoctor.cuil}</strong></span>
                     ) : (selectedDoctor.dni || selectedDoctor.nif) ? (
                       <span>🔢 DNI: <strong>{selectedDoctor.dni || selectedDoctor.nif}</strong></span>
                     ) : null}
@@ -1905,290 +1946,421 @@ export default function PadronMedicosApp() {
               </button>
             </div>
 
+            {/* Navegación limpia en 3 pestañas de la Ficha Única 360° */}
+            <div className="pm-modal__tabs">
+              <button
+                type="button"
+                className={`pm-modal__tab ${modalTab === 'perfil' ? 'pm-modal__tab--active' : ''}`}
+                onClick={() => setModalTab('perfil')}
+              >
+                👤 Perfil y Actividades
+              </button>
+              <button
+                type="button"
+                className={`pm-modal__tab ${modalTab === 'legajo' ? 'pm-modal__tab--active' : ''}`}
+                onClick={() => setModalTab('legajo')}
+              >
+                🏛️ Legajo, Alquiler y Económico
+              </button>
+              <button
+                type="button"
+                className={`pm-modal__tab ${modalTab === 'convenios' ? 'pm-modal__tab--active' : ''}`}
+                onClick={() => setModalTab('convenios')}
+              >
+                💳 Obras Sociales y Convenios ({selectedDoctor.convenios_habilitados_count || 0})
+              </button>
+            </div>
+
             {/* Body Ficha 360 */}
             <div className="pm-modal__body">
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '0.85rem',
-              }}>
-                <div className="pm-box" style={{ padding: '0.9rem 1rem', borderLeft: '4px solid #1E5FA6' }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                    Primera Atención (Desde)
-                  </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                    {formatDateAR(selectedDoctor.primera_atencion)}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                    Alta SALUS: {formatDateAR(selectedDoctor.fecha_alta_salus)}
-                  </div>
-                </div>
-
-                <div className="pm-box" style={{
-                  padding: '0.9rem 1rem',
-                  borderLeft: `4px solid ${selectedDoctor.estado_actividad === 'Activo' ? '#16A34A' : '#DC2626'}`,
-                }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                    Última Atención (Hasta)
-                  </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                    {formatDateAR(selectedDoctor.ultima_atencion)}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: selectedDoctor.estado_actividad === 'Activo' ? '#15803d' : '#b91c1c', marginTop: '2px' }}>
-                    {formatTiempoSinAtender(selectedDoctor.dias_sin_atender)}
-                  </div>
-                </div>
-              </div>
-
-              {/* ─── DATOS FISCALES, LEGALES, DIRECCIÓN Y SEGURO PROFESIONAL (SALUS) ─── */}
-              <div className="pm-box">
-                <h4 className="pm-box__title">
-                  <span>🏛️ Datos Fiscales, Legales, Dirección y Seguro Profesional (SALUS)</span>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>
-                    ID Personal SALUS #{selectedDoctor.id_personal}
-                  </span>
-                </h4>
-                <div className="pm-legal-grid">
-                  <div className="pm-legal-item">
-                    <span className="pm-legal-item__label">🧾 CUIL / CUIT</span>
-                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.cuil ? '#1E5FA6' : '#94a3b8' }}>
-                      {selectedDoctor.cuil || 'No registrado'}
-                    </span>
-                    <span className="pm-legal-item__sub">
-                      DNI: <strong>{selectedDoctor.dni || selectedDoctor.nif || '—'}</strong>
-                    </span>
-                  </div>
-
-                  <div className="pm-legal-item">
-                    <span className="pm-legal-item__label">🏢 Razón Social / Facturación</span>
-                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.razon_social ? '#0f172a' : '#94a3b8' }}>
-                      {selectedDoctor.razon_social || 'No registrada'}
-                    </span>
-                    <span className="pm-legal-item__sub">
-                      Entidad fiscal asociada en SALUS
-                    </span>
-                  </div>
-
-                  <div className="pm-legal-item">
-                    <span className="pm-legal-item__label">📍 Dirección Registrada</span>
-                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.direccion ? '#0f172a' : '#94a3b8' }}>
-                      {selectedDoctor.calle || selectedDoctor.direccion || 'No registrada'}
-                    </span>
-                    <span className="pm-legal-item__sub">
-                      {[selectedDoctor.localidad, selectedDoctor.cp ? `CP ${selectedDoctor.cp}` : ''].filter(Boolean).join(' • ') || 'San Juan'}
-                    </span>
-                  </div>
-
-                  <div className="pm-legal-item">
-                    <span className="pm-legal-item__label">🛡️ Seguro Responsabilidad Civil</span>
-                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.seguro ? '#0369a1' : '#94a3b8' }}>
-                      {selectedDoctor.seguro || 'No registrado en legajo'}
-                    </span>
-                    <span className="pm-legal-item__sub">
-                      {selectedDoctor.seguro_vencimiento
-                        ? `Vencimiento póliza: ${formatDateAR(selectedDoctor.seguro_vencimiento)}`
-                        : 'Sin fecha de vencimiento informada'}
-                    </span>
-                  </div>
-
-                  <div className="pm-legal-item">
-                    <span className="pm-legal-item__label">🏛️ N° Superintendencia Salud (SSS)</span>
-                    <span className="pm-legal-item__val" style={{ color: selectedDoctor.nro_sss ? '#15803d' : '#94a3b8' }}>
-                      {selectedDoctor.nro_sss || 'No registrado'}
-                    </span>
-                    <span className="pm-legal-item__sub">
-                      Matrícula Provincial (MP): <strong>{selectedDoctor.matricula || '—'}</strong>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Evolución Anual + Sedes & Especialidades */}
-              <div className="pm-detail-grid">
-                <div className="pm-box">
-                  <h4 className="pm-box__title">
-                    <span>📅 Línea de Tiempo Anual de Atenciones</span>
-                    <span style={{ fontSize: '0.73rem', fontWeight: 500, color: '#64748b' }}>
-                      {selectedDoctor.meses_activos} meses con actividad registrada
-                    </span>
-                  </h4>
-                  {selectedDoctor.historial_anual?.length > 0 ? (
-                    <div style={{ width: '100%', height: 210 }}>
-                      <ResponsiveContainer>
-                        <BarChart data={selectedDoctor.historial_anual}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                          <XAxis dataKey="anio" tick={{ fontSize: 11 }} />
-                          <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip formatter={v => Number(v).toLocaleString('es-AR')} />
-                          <Bar dataKey="cantidad" name="Atenciones" fill="#1E5FA6" radius={[5, 5, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+              {/* ══════════ PESTAÑA 1: PERFIL Y ACTIVIDADES ══════════ */}
+              {modalTab === 'perfil' && (
+                <>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '0.85rem',
+                  }}>
+                    <div className="pm-box" style={{ padding: '0.85rem 1rem', borderLeft: '4px solid #1E5FA6' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                        Primera Atención (Desde)
+                      </div>
+                      <div style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
+                        {formatDateAR(selectedDoctor.primera_atencion)}
+                      </div>
+                      <div style={{ fontSize: '0.71rem', color: '#64748b', marginTop: '2px' }}>
+                        Alta SALUS: {formatDateAR(selectedDoctor.fecha_alta_salus)}
+                      </div>
                     </div>
-                  ) : (
-                    <p style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Sin desglose anual disponible.</p>
-                  )}
-                </div>
 
-                <div className="pm-box" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div>
-                    <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
-                      <span>🏥 Sedes de Atención en el Sanatorio</span>
+                    <div className="pm-box" style={{
+                      padding: '0.85rem 1rem',
+                      borderLeft: `4px solid ${selectedDoctor.estado_actividad === 'Activo' ? '#16A34A' : '#DC2626'}`,
+                    }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                        Última Atención (Hasta)
+                      </div>
+                      <div style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
+                        {formatDateAR(selectedDoctor.ultima_atencion)}
+                      </div>
+                      <div style={{ fontSize: '0.71rem', fontWeight: 600, color: selectedDoctor.estado_actividad === 'Activo' ? '#15803d' : '#b91c1c', marginTop: '2px' }}>
+                        {formatTiempoSinAtender(selectedDoctor.dias_sin_atender)}
+                      </div>
+                    </div>
+
+                    <div className="pm-box" style={{ padding: '0.85rem 1rem', borderLeft: '4px solid #0284C7' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                        Profesión y Función (SALUS)
+                      </div>
+                      <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
+                        {selectedDoctor.profesion_salus || 'Profesional de Salud'}
+                      </div>
+                      <div style={{ fontSize: '0.71rem', color: '#475569', marginTop: '2px' }}>
+                        {selectedDoctor.es_jefe_servicio
+                          ? '👑 Responsable / Jefe de Servicio'
+                          : selectedDoctor.es_solo_guardia
+                          ? '🚨 Médico Exclusivo de Guardia'
+                          : selectedDoctor.modalidad_atencion || 'Atención Programada'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mapa de 6 Actividades Asistenciales (Bloque E) */}
+                  <div className="pm-box">
+                    <h4 className="pm-box__title">
+                      <span>⚡ Mapa de Actividades Asistenciales Registradas en SALUS</span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>
+                        Detectado automáticamente por Visitas, Guardias e Internación
+                      </span>
                     </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                      {(selectedDoctor.sedes || []).map(s => {
-                        const pct = selectedDoctor.total_atenciones > 0
-                          ? ((s.cantidad / selectedDoctor.total_atenciones) * 100).toFixed(1)
-                          : 0;
+                    <div className="pm-activities-grid">
+                      {[
+                        { key: 'consultorio_externo', icon: '🏥', label: 'Consultorio Externo', unit: 'visitas' },
+                        { key: 'guardia', icon: '🚨', label: 'Guardia', unit: 'visitas' },
+                        { key: 'internacion', icon: '🛏️', label: 'Internación', unit: 'ingresos' },
+                        { key: 'quirofano', icon: '🔪', label: 'Quirófano (CX)', unit: 'cirugías' },
+                        { key: 'interconsultas', icon: '🩺', label: 'Interconsultas', unit: 'registros' },
+                        { key: 'practicas_medicas', icon: '🔬', label: 'Prácticas Médicas', unit: 'estudios' },
+                      ].map(act => {
+                        const val = selectedDoctor.actividades_salus?.[act.key] || 0;
+                        const active = val > 0;
                         return (
-                          <div key={s.sede} className="pm-rank-item" style={{ justifyContent: 'space-between' }}>
-                            <div>
-                              <strong style={{ color: '#0f172a' }}>{s.sede}</strong>
-                              <span style={{ fontSize: '0.71rem', color: '#64748b', marginLeft: '0.5rem' }}>
-                                Última vez: {formatDateAR(s.ultima_vez)}
-                              </span>
-                            </div>
-                            <div style={{ fontWeight: 700, color: '#1E5FA6' }}>
-                              {s.cantidad.toLocaleString('es-AR')} ({pct}%)
-                            </div>
+                          <div key={act.key} className={`pm-activity-card ${active ? 'pm-activity-card--active' : ''}`}>
+                            <span className="pm-activity-card__title">{act.icon} {act.label}</span>
+                            <span className="pm-activity-card__val">
+                              {active ? `${val.toLocaleString('es-AR')} ${act.unit}` : 'Sin registros'}
+                            </span>
                           </div>
                         );
                       })}
                     </div>
                   </div>
 
-                  <div>
-                    <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
-                      <span>🎓 Especialidad Principal y Secundarias</span>
-                    </h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span
-                        style={{
-                          background: '#1E5FA6',
-                          color: '#ffffff',
-                          padding: '0.32rem 0.75rem',
-                          borderRadius: '8px',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                        }}
-                      >
-                        ⭐ 1ª Principal: {selectedDoctor.especialidad_principal}
-                        {selectedDoctor.especialidades?.[0]?.cantidad > 0
-                          ? ` (${selectedDoctor.especialidades[0].cantidad.toLocaleString('es-AR')})`
-                          : ''}
-                      </span>
-
-                      {(selectedDoctor.especialidades_secundarias?.length || (selectedDoctor.especialidades?.length || 0) - 1) > 0 && (
-                        <button
-                          type="button"
-                          className="pm-ver-mas-btn"
-                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.74rem' }}
-                          onClick={() => setModalShowSecundarias(prev => !prev)}
-                        >
-                          {modalShowSecundarias
-                            ? 'Ocultar especialidades secundarias'
-                            : `Ver más especialidades (+${(selectedDoctor.especialidades_secundarias || selectedDoctor.especialidades.slice(1)).length})`}
-                        </button>
+                  {/* Evolución Anual + Sedes & Especialidades */}
+                  <div className="pm-detail-grid">
+                    <div className="pm-box">
+                      <h4 className="pm-box__title">
+                        <span>📅 Línea de Tiempo Anual de Atenciones</span>
+                        <span style={{ fontSize: '0.73rem', fontWeight: 500, color: '#64748b' }}>
+                          {selectedDoctor.meses_activos} meses con actividad
+                        </span>
+                      </h4>
+                      {selectedDoctor.historial_anual?.length > 0 ? (
+                        <div style={{ width: '100%', height: 210 }}>
+                          <ResponsiveContainer>
+                            <BarChart data={selectedDoctor.historial_anual}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                              <XAxis dataKey="anio" tick={{ fontSize: 11 }} />
+                              <YAxis tick={{ fontSize: 11 }} />
+                              <Tooltip formatter={v => Number(v).toLocaleString('es-AR')} />
+                              <Bar dataKey="cantidad" name="Atenciones" fill="#1E5FA6" radius={[5, 5, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <p style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Sin desglose anual disponible.</p>
                       )}
                     </div>
 
-                    {modalShowSecundarias && (
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
-                        {(selectedDoctor.especialidades_secundarias || (selectedDoctor.especialidades || []).slice(1)).map(e => (
+                    <div className="pm-box" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div>
+                        <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
+                          <span>🎓 Especialidad Principal y Secundarias</span>
+                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           <span
-                            key={e.nombre}
                             style={{
-                              background: '#f1f5f9',
-                              color: '#334155',
-                              border: '1px solid #cbd5e1',
-                              padding: '0.26rem 0.6rem',
-                              borderRadius: '7px',
-                              fontSize: '0.73rem',
-                              fontWeight: 600,
+                              background: '#1E5FA6',
+                              color: '#ffffff',
+                              padding: '0.32rem 0.75rem',
+                              borderRadius: '8px',
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
                             }}
                           >
-                            {e.nombre} {e.cantidad > 0 ? `(${e.cantidad.toLocaleString('es-AR')} • ${e.porcentaje || 0}%)` : ''}
+                            ⭐ 1ª Principal: {formatEspDisplayName(selectedDoctor.especialidad_principal)}
+                            {selectedDoctor.especialidades?.[0]?.cantidad > 0
+                              ? ` (${selectedDoctor.especialidades[0].cantidad.toLocaleString('es-AR')})`
+                              : ''}
                           </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Modalidad de Atención y Agendas de Guardia */}
-                  <div>
-                    <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
-                      <span>🚨 Modalidad y Agendas de Guardia (SALUS)</span>
-                    </h4>
-                    <div style={{ fontSize: '0.79rem', color: '#334155', marginBottom: selectedDoctor.agendas_guardia?.length ? '0.5rem' : 0 }}>
-                      Modalidad detectada:{' '}
-                      <strong style={{ color: selectedDoctor.es_solo_guardia ? '#b45309' : '#1E5FA6' }}>
-                        {selectedDoctor.es_solo_guardia
-                          ? `🚨 Exclusivo de Guardia (${selectedDoctor.pct_guardia}% de sus visitas)`
-                          : selectedDoctor.atenciones_guardia > 0
-                          ? `🔄 Consultorio + Guardia (${selectedDoctor.pct_guardia}% en guardia)`
-                          : '🏥 Consultorio / Atención Programada (sin agendas de guardia)'}
-                      </strong>
+                          {(selectedDoctor.especialidades_secundarias?.length || (selectedDoctor.especialidades?.length || 0) - 1) > 0 && (
+                            <button
+                              type="button"
+                              className="pm-ver-mas-btn"
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.74rem' }}
+                              onClick={() => setModalShowSecundarias(prev => !prev)}
+                            >
+                              {modalShowSecundarias
+                                ? 'Ocultar secundarias'
+                                : `Ver más (+${(selectedDoctor.especialidades_secundarias || selectedDoctor.especialidades.slice(1)).length})`}
+                            </button>
+                          )}
+                        </div>
+
+                        {modalShowSecundarias && (
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+                            {(selectedDoctor.especialidades_secundarias || (selectedDoctor.especialidades || []).slice(1)).map(e => (
+                              <span
+                                key={e.nombre}
+                                style={{
+                                  background: '#f1f5f9',
+                                  color: '#334155',
+                                  border: '1px solid #cbd5e1',
+                                  padding: '0.26rem 0.6rem',
+                                  borderRadius: '7px',
+                                  fontSize: '0.73rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {formatEspDisplayName(e.nombre)} {e.cantidad > 0 ? `(${e.cantidad.toLocaleString('es-AR')} • ${e.porcentaje || 0}%)` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="pm-box__title" style={{ marginBottom: '0.6rem' }}>
+                          <span>🏥 Sedes de Atención en el Sanatorio</span>
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          {(selectedDoctor.sedes || []).map(s => {
+                            const pct = selectedDoctor.total_atenciones > 0
+                              ? ((s.cantidad / selectedDoctor.total_atenciones) * 100).toFixed(1)
+                              : 0;
+                            return (
+                              <div key={s.sede} className="pm-rank-item" style={{ justifyContent: 'space-between' }}>
+                                <div>
+                                  <strong style={{ color: '#0f172a' }}>{s.sede}</strong>
+                                  <span style={{ fontSize: '0.71rem', color: '#64748b', marginLeft: '0.5rem' }}>
+                                    Última: {formatDateAR(s.ultima_vez)}
+                                  </span>
+                                </div>
+                                <div style={{ fontWeight: 700, color: '#1E5FA6' }}>
+                                  {s.cantidad.toLocaleString('es-AR')} ({pct}%)
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {selectedDoctor.agendas_guardia?.length > 0 && (
+                        <div>
+                          <h4 className="pm-box__title" style={{ marginBottom: '0.5rem' }}>
+                            <span>🚨 Agendas de Guardia ({selectedDoctor.pct_guardia}%)</span>
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            {selectedDoctor.agendas_guardia.map(ag => (
+                              <div key={ag.nombre} className="pm-rank-item" style={{ justifyContent: 'space-between', background: '#fffbeb', borderColor: '#fde68a' }}>
+                                <div>
+                                  <strong style={{ color: '#92400e' }}>{ag.nombre}</strong>
+                                  {ag.ultima_vez && (
+                                    <span style={{ fontSize: '0.7rem', color: '#b45309', marginLeft: '0.5rem' }}>
+                                      Última: {formatDateAR(ag.ultima_vez)}
+                                    </span>
+                                  )}
+                                </div>
+                                <strong style={{ color: '#b45309' }}>
+                                  {ag.cantidad.toLocaleString('es-AR')} atenc.
+                                </strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {selectedDoctor.agendas_guardia?.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                        {selectedDoctor.agendas_guardia.map(ag => (
-                          <div key={ag.nombre} className="pm-rank-item" style={{ justifyContent: 'space-between', background: '#fffbeb', borderColor: '#fde68a' }}>
-                            <div>
-                              <strong style={{ color: '#92400e' }}>{ag.nombre}</strong>
-                              {ag.ultima_vez && (
-                                <span style={{ fontSize: '0.7rem', color: '#b45309', marginLeft: '0.5rem' }}>
-                                  Última guardia: {formatDateAR(ag.ultima_vez)}
-                                </span>
-                              )}
-                            </div>
-                            <strong style={{ color: '#b45309' }}>
-                              {ag.cantidad.toLocaleString('es-AR')} atenc.
-                            </strong>
-                          </div>
-                        ))}
+                  </div>
+                </>
+              )}
+
+              {/* ══════════ PESTAÑA 2: LEGAJO, ALQUILER Y ECONÓMICO ══════════ */}
+              {modalTab === 'legajo' && (
+                <>
+                  <div className="pm-box">
+                    <h4 className="pm-box__title">
+                      <span>🏛️ Datos Fiscales, Legales, Dirección y Seguro Profesional (SALUS)</span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>
+                        ID SALUS #{selectedDoctor.id_personal}
+                        {selectedDoctor.codigo_alternativo ? ` • Cód: ${selectedDoctor.codigo_alternativo}` : ''}
+                      </span>
+                    </h4>
+                    <div className="pm-legal-grid">
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">🧾 CUIL / CUIT</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.cuil ? '#1E5FA6' : '#94a3b8' }}>
+                          {selectedDoctor.cuil || 'No registrado'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          DNI: <strong>{selectedDoctor.dni || selectedDoctor.nif || '—'}</strong>
+                        </span>
                       </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">🏢 Razón Social / Facturación</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.razon_social ? '#0f172a' : '#94a3b8' }}>
+                          {selectedDoctor.razon_social || 'No registrada'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          Entidad fiscal asociada en SALUS
+                        </span>
+                      </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">📍 Dirección Registrada</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.direccion ? '#0f172a' : '#94a3b8' }}>
+                          {selectedDoctor.calle || selectedDoctor.direccion || 'No registrada'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          {[selectedDoctor.localidad, selectedDoctor.cp ? `CP ${selectedDoctor.cp}` : ''].filter(Boolean).join(' • ') || 'San Juan'}
+                        </span>
+                      </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">🛡️ Seguro Responsabilidad Civil</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.seguro ? '#0369a1' : '#94a3b8' }}>
+                          {selectedDoctor.seguro || 'No registrado en legajo'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          {selectedDoctor.seguro_vencimiento
+                            ? `Vencimiento póliza: ${formatDateAR(selectedDoctor.seguro_vencimiento)}`
+                            : 'Sin fecha de vencimiento informada'}
+                        </span>
+                      </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">🏛️ N° Superintendencia Salud (SSS)</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.nro_sss ? '#15803d' : '#94a3b8' }}>
+                          {selectedDoctor.nro_sss || 'No registrado'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          Matrícula Provincial (MP): <strong>{selectedDoctor.matricula || '—'}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Modalidad Económica, Liquidaciones y Alquiler de Consultorio */}
+                  <div className="pm-box">
+                    <h4 className="pm-box__title">
+                      <span>💵 Modalidad Económica, Liquidaciones y Alquiler de Consultorio (SALUS)</span>
+                    </h4>
+                    <div className="pm-legal-grid">
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">💼 Liquidación de Honorarios</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.total_liquidaciones > 0 ? '#15803d' : '#64748b' }}>
+                          {selectedDoctor.total_liquidaciones > 0
+                            ? `Sí (${selectedDoctor.total_liquidaciones} liquidaciones)`
+                            : 'Sin liquidaciones en SALUS'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          {selectedDoctor.ultima_liquidacion
+                            ? `Última liquidación: ${formatDateAR(selectedDoctor.ultima_liquidacion)}`
+                            : 'No registra historial de liquidación'}
+                        </span>
+                      </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">📊 % Gasto / Retención</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.pct_gasto_liquidacion > 0 ? '#1E5FA6' : '#94a3b8' }}>
+                          {selectedDoctor.pct_gasto_liquidacion > 0 ? `${selectedDoctor.pct_gasto_liquidacion}%` : 'No configurado'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          Porcentaje sobre liquidación en SALUS
+                        </span>
+                      </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">🏢 Alquiler de Consultorio</span>
+                        <span className="pm-legal-item__val" style={{ color: selectedDoctor.alquila_consultorio ? '#0369a1' : '#94a3b8' }}>
+                          {selectedDoctor.alquila_consultorio ? 'Sí, registra alquiler' : 'No registra alquiler'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          {selectedDoctor.alquileres_salus?.length > 0
+                            ? selectedDoctor.alquileres_salus
+                                .map(a => `${shortenSedeName(a.sede)}${a.importe > 0 ? ` ($${a.importe.toLocaleString('es-AR')})` : ''}`)
+                                .join(' • ')
+                            : 'Sin canon registrado en FE_Entidades'}
+                        </span>
+                      </div>
+
+                      <div className="pm-legal-item">
+                        <span className="pm-legal-item__label">🏥 Servicios Asignados</span>
+                        <span className="pm-legal-item__val" style={{ fontSize: '0.8rem' }}>
+                          {selectedDoctor.servicios_salus?.length > 0
+                            ? selectedDoctor.servicios_salus.slice(0, 3).map(s => s.nombre).join(', ')
+                            : 'Sin servicio asignado'}
+                        </span>
+                        <span className="pm-legal-item__sub">
+                          {selectedDoctor.es_jefe_servicio ? '👑 Figura como Responsable/Jefe' : 'Asignación en ServiciosPersonal'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ══════════ PESTAÑA 3: OBRAS SOCIALES Y CONVENIOS ══════════ */}
+              {modalTab === 'convenios' && (
+                <div className="pm-box">
+                  <h4 className="pm-box__title">
+                    <span>💳 Obras Sociales / Financiadores Más Recibidos</span>
+                    <span style={{ fontSize: '0.73rem', color: '#1E5FA6', fontWeight: 700, background: '#eff6ff', padding: '2px 8px', borderRadius: '999px' }}>
+                      {selectedDoctor.convenios_habilitados_count || 0} convenios habilitados en SALUS
+                    </span>
+                  </h4>
+                  <div className="pm-rank-list" style={{ maxHeight: '420px' }}>
+                    {(selectedDoctor.top_obras_sociales || []).length === 0 ? (
+                      <p style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Sin obras sociales detalladas.</p>
+                    ) : (
+                      selectedDoctor.top_obras_sociales.map((os, idx) => (
+                        <div key={os.nombre} className="pm-rank-item">
+                          <div className="pm-rank-num" style={{ background: '#E0F2FE', color: '#0369A1' }}>
+                            #{idx + 1}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={os.nombre}>
+                              {os.nombre}
+                            </div>
+                            <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '99px', marginTop: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.min(100, os.porcentaje)}%`, height: '100%', background: '#0284C7' }} />
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontWeight: 800, color: '#0369A1' }}>
+                              {os.cantidad.toLocaleString('es-AR')}
+                            </div>
+                            <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 600 }}>
+                              {os.porcentaje}%
+                            </div>
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
-              </div>
-
-              {/* TOP OBRAS SOCIALES MÁS RECIBIDAS */}
-              <div className="pm-box">
-                <h4 className="pm-box__title">
-                  <span>💳 Obras Sociales / Financiadores Más Recibidos</span>
-                  <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                    Top Coberturas del Profesional en SALUS
-                  </span>
-                </h4>
-                <div className="pm-rank-list" style={{ maxHeight: '320px' }}>
-                  {(selectedDoctor.top_obras_sociales || []).length === 0 ? (
-                    <p style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Sin obras sociales detalladas.</p>
-                  ) : (
-                    selectedDoctor.top_obras_sociales.map((os, idx) => (
-                      <div key={os.nombre} className="pm-rank-item">
-                        <div className="pm-rank-num" style={{ background: '#E0F2FE', color: '#0369A1' }}>
-                          #{idx + 1}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={os.nombre}>
-                            {os.nombre}
-                          </div>
-                          <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '99px', marginTop: '4px', overflow: 'hidden' }}>
-                            <div style={{ width: `${Math.min(100, os.porcentaje)}%`, height: '100%', background: '#0284C7' }} />
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontWeight: 800, color: '#0369A1' }}>
-                            {os.cantidad.toLocaleString('es-AR')}
-                          </div>
-                          <div style={{ fontSize: '0.69rem', color: '#64748b', fontWeight: 600 }}>
-                            {os.porcentaje}%
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

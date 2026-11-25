@@ -1029,6 +1029,87 @@
   gap: 1rem;
 }
 
+.pm-modal__tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.75rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.pm-modal__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.44rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pm-modal__tab:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.pm-modal__tab--active {
+  background: #eff6ff;
+  color: #1E5FA6;
+  border-color: #bfdbfe;
+}
+
+.pm-activities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.pm-activity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  transition: all 0.15s ease;
+}
+
+.pm-activity-card--active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.pm-activity-card__title {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pm-activity-card--active .pm-activity-card__title {
+  color: #1E5FA6;
+}
+
+.pm-activity-card__val {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #94a3b8;
+}
+
+.pm-activity-card--active .pm-activity-card__val {
+  color: #0f172a;
+}
+
 .pm-modal__body {
   padding: 1.5rem 1.75rem;
   overflow-y: auto;
